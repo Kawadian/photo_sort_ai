@@ -122,7 +122,7 @@ class App:
         api_grid.columnconfigure(3, weight=1)
         self.field(api_grid, 0, 0, "API URL", "openai_base_url", self.config.openai_base_url)
         self.field(api_grid, 0, 2, "画像対応モデル名", "openai_model", self.config.openai_model)
-        self.field(api_grid, 1, 0, "API方式", "openai_api_mode", self.config.openai_api_mode, ["chat_completions", "responses"])
+        self.field(api_grid, 1, 0, "API方式", "openai_api_mode", self.config.openai_api_mode, ["chat_completions", "responses", "decisions", "openrouter_decisions"])
         self.field(api_grid, 1, 2, "JSON方式", "openai_response_format", self.config.openai_response_format, ["json_object", "json_schema", "none"])
         self.field(api_grid, 2, 0, "APIキーの環境変数", "openai_api_key_env", self.config.openai_api_key_env)
         ttk.Label(api_grid, text="APIキー（起動中のみ）").grid(row=2, column=2, sticky="w", padx=(0, 8), pady=4)
@@ -133,7 +133,7 @@ class App:
         self.field(api_grid, 4, 0, "出力トークン上限", "openai_max_output_tokens", self.config.openai_max_output_tokens)
         store = "omit" if self.config.openai_store is None else str(self.config.openai_store).lower()
         self.field(api_grid, 4, 2, "APIのstore指定", "openai_store", store, ["false", "true", "omit"])
-        ttk.Label(api_settings, text="評価プロンプト（rating:整数1〜5、reason:文字列のJSONを返す指示を付加します）").pack(anchor="w", pady=(14, 4))
+        ttk.Label(api_settings, text="評価プロンプト（Chat／Responsesは星と理由のJSON、Decisionsは星1〜5の選択結果を取得）").pack(anchor="w", pady=(14, 4))
         self.api_prompt = tk.Text(api_settings, height=6, wrap="word")
         self.api_prompt.insert("1.0", self.config.openai_prompt)
         self.api_prompt.pack(fill="x")
@@ -142,6 +142,7 @@ class App:
         self.api_extra.insert("1.0", json.dumps(self.config.openai_extra_body, ensure_ascii=False))
         self.api_extra.pack(fill="x")
         ttk.Label(api_settings, text="URLは /v1 等のベースURL、または選択したAPIの完全URL。互換サーバーに合わせてJSON方式・store指定を変更できます。\n"
+                  "DecisionsはAPI方式で明示選択。JSON方式・出力上限・storeは送信せず、文章の理由は生成しません。\n"
                   "キー不要のローカルAPIでは環境変数名を空欄にします。変更後は「設定・実行」タブから保存・再開してください。",
                   wraplength=930).pack(anchor="w", pady=12)
 

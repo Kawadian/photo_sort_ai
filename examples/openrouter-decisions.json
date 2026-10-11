@@ -1,0 +1,9 @@
+{
+  "folders": ["D:/Photos"],
+  "preset": "openai",
+  "openai_base_url": "https://openrouter.ai/api/alpha/decisions",
+  "openai_api_mode": "openrouter_decisions",
+  "openai_model": "openai/gpt-6-luna-decisions",
+  "openai_api_key_env": "OPENROUTER_API_KEY",
+  "output": "report"
+}
