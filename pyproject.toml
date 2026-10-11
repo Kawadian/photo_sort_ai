@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "photo-sort-ai"
+version = "0.1.0"
+description = "Local photo rating, folder watching and RAW metadata integration"
+requires-python = ">=3.11"
+dependencies = ["Pillow>=10,<13", "numpy>=1.26,<3"]
+
+[project.optional-dependencies]
+# openai-clip still imports pkg_resources (removed in newer setuptools).
+ai = ["pyiqa>=0.1.13,<0.2", "setuptools>=68,<81"]
+raw = ["rawpy>=0.21,<0.27"]
+onnx = ["onnxruntime>=1.18,<2"]
+onnx-cuda = ["onnxruntime-gpu>=1.18,<2"]
+directml = ["onnxruntime-directml>=1.18,<2; sys_platform == 'win32'"]
+
+[project.scripts]
+photo-sort-ai = "photo_sort_ai.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

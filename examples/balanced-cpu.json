@@ -1,0 +1,14 @@
+{
+  "folders": ["D:/Photos"],
+  "preset": "balanced",
+  "device": "cpu",
+  "cpu_threads": 2,
+  "low_priority": true,
+  "poll_seconds": 10,
+  "settle_seconds": 30,
+  "image_source": "auto",
+  "max_side": 1024,
+  "output": "embedded",
+  "existing_policy": "preserve",
+  "backup": true
+}
