@@ -75,7 +75,7 @@ Fedoraでは`python3-tkinter`と`perl-Image-ExifTool`等、ディストリビュ
 # 軽量解析・API用：PyTorchなし
 ./install.sh --minimal
 
-# CUDA版
+# CUDA版。GUIの実行デバイスもcudaへ変更
 ./install.sh --device cuda
 
 # 独自ONNXをCPUで利用
@@ -89,6 +89,7 @@ ZIP展開等で実行権限がない場合は`chmod +x install.sh start.sh watch
 設定画面を表示するにはデスクトップのDISPLAY／Wayland-XWayland環境が必要です。
 SSHのみの環境ではCLIを使用します。CLIはTkinter・GUIディスプレイを必要としません。
 LinuxではDirectMLを使用せず、CPUまたはCUDAを選択します。
+CPU版／CUDA版を切り替える場合は、停止後に`.venv`を作り直してセットアップしてください。
 状態の既定保存先は`~/.local/share/PhotoSortAI`、設定はリポジトリの`config.json`です。
 自動起動が必要な場合は、設定後の`watch.sh`をデスクトップの自動起動やユーザーサービスから実行できます。
 
@@ -297,6 +298,15 @@ export OPENAI_API_KEY='自分のAPIキー'
 
 [OpenAI公式用の設定例](examples/openai-api.json)と[ローカル互換API用の設定例](examples/openai-compatible-local.json)があります。
 モデルID・写真フォルダ・URLを自分の環境に合わせて変更してください。
+GUIを使わずに実行する場合は、設定例JSONを編集するかCLIの一時上書きを使えます。Linuxの例：
+
+```bash
+.venv/bin/python -m photo_sort_ai scan --preset openai \
+  --folder "$HOME/Photos" --api-url https://api.openai.com/v1 \
+  --api-model YOUR_VISION_MODEL_ID --api-mode responses --api-json-mode json_schema --output report
+```
+
+Windowsでも同じオプションを使えます。`--api-key-env`は環境変数名で、キーの値は引数へ渡しません。
 古い互換サーバーが`max_tokens`だけに対応する場合は、出力上限を0にし追加パラメータで`{"max_tokens":512}`を指定できます。
 未対応パラメータでエラーになった場合、別形式への自動再送はせず設定変更後に再試行します。
 

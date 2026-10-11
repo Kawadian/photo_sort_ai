@@ -1,15 +1,17 @@
+import io
 import json
 import os
 import tempfile
 import threading
 import unittest
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
 from PIL import Image
 
+from photo_sort_ai.cli import main
 from photo_sort_ai.config import Config, load_config, save_config
 from photo_sort_ai.engine import Engine
 from photo_sort_ai.metadata import read_sidecar_rating, sidecar_path
@@ -192,6 +194,22 @@ class OpenAIAPITests(unittest.TestCase):
                     self.assertEqual(engine.scan()["processed"], 0)
             self.assertEqual(len(records), 1)
             self.assertEqual(read_sidecar_rating(sidecar_path(image)), 4)
+
+    def test_cli_api_overrides_without_gui_or_persistent_config_change(self):
+        with tempfile.TemporaryDirectory() as directory, server() as (base, records):
+            root = Path(directory).resolve()
+            self.image().save(root / "写真.png")
+            config_path = root / "config.json"
+            cfg = Config(folders=[str(root)], state_dir=str(root / "state"), output="report",
+                         settle_seconds=0, low_priority=False)
+            save_config(cfg, config_path)
+            with redirect_stdout(io.StringIO()):
+                code = main(["--config", str(config_path), "scan", "--preset", "openai", "--api-url", base,
+                             "--api-model", "test-vision", "--api-mode", "chat_completions",
+                             "--api-key-env", "", "--api-json-mode", "none"])
+            self.assertEqual(code, 0)
+            self.assertEqual(len(records), 1)
+            self.assertEqual(load_config(config_path).preset, "light")
 
 
 if __name__ == "__main__":

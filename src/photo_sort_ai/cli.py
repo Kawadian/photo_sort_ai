@@ -39,6 +39,11 @@ def parser() -> argparse.ArgumentParser:
         s.add_argument("--preset", choices=PRESETS)
         s.add_argument("--device", choices=["cpu", "cuda", "auto"])
         s.add_argument("--output", choices=["embedded", "sidecar", "report"])
+        s.add_argument("--api-url", help="OpenAI互換APIのベースURLまたは完全URL")
+        s.add_argument("--api-model", help="OpenAI互換APIの画像対応モデルID")
+        s.add_argument("--api-mode", choices=["chat_completions", "responses"])
+        s.add_argument("--api-key-env", help="APIキーの環境変数名。匿名APIは空文字")
+        s.add_argument("--api-json-mode", choices=["json_schema", "json_object", "none"])
         s.add_argument("--retry-errors", action="store_true")
         s.add_argument("--overwrite-rated", action="store_true", help="既存の星評価の上書きを許可")
         if command != "watch":
@@ -130,6 +135,15 @@ def main(argv=None) -> int:
             cfg.device = args.device
         if args.output:
             cfg.output = args.output
+        api_overrides = {"api_url": "openai_base_url", "api_model": "openai_model",
+                         "api_mode": "openai_api_mode", "api_key_env": "openai_api_key_env",
+                         "api_json_mode": "openai_response_format"}
+        for option, key in api_overrides.items():
+            value = getattr(args, option)
+            if value is not None:
+                if cfg.backend != "openai":
+                    raise ValueError("--api-*を使う場合は --preset openai、またはAPI方式の設定を指定してください。")
+                setattr(cfg, key, value)
         if args.overwrite_rated:
             cfg.existing_policy = "overwrite"
         limit = getattr(args, "limit", None)

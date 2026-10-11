@@ -174,7 +174,8 @@ class Config:
             raise ValueError("openai_api_modeはchat_completions / responsesです。")
         url = urlparse(self.openai_base_url)
         if (url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password
-                or url.query or url.fragment or any(ord(c) <= 32 for c in self.openai_base_url)):
+                or "?" in self.openai_base_url or "#" in self.openai_base_url
+                or any(ord(c) <= 32 for c in self.openai_base_url)):
             raise ValueError("API URLは認証情報・クエリ・フラグメントを含まないHTTP(S) URLにしてください。")
         try:
             url.port
