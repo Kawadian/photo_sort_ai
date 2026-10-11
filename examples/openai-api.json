@@ -8,5 +8,6 @@
   "openai_response_format": "json_schema",
   "openai_image_detail": "auto",
   "openai_max_output_tokens": 2048,
-  "output": "report"
+  "output": "report",
+  "api_concurrency": 4
 }

@@ -133,6 +133,8 @@ class App:
         self.field(api_grid, 4, 0, "出力トークン上限", "openai_max_output_tokens", self.config.openai_max_output_tokens)
         store = "omit" if self.config.openai_store is None else str(self.config.openai_store).lower()
         self.field(api_grid, 4, 2, "APIのstore指定", "openai_store", store, ["false", "true", "omit"])
+        self.field(api_grid, 5, 0, "同時リクエスト数", "api_concurrency", self.config.api_concurrency)
+        self.field(api_grid, 5, 2, "429/503の再試行回数", "api_rate_limit_retries", self.config.api_rate_limit_retries)
         ttk.Label(api_settings, text="評価プロンプト（Chat／Responsesは星と理由のJSON、Decisionsは星1〜5の選択結果を取得）").pack(anchor="w", pady=(14, 4))
         self.api_prompt = tk.Text(api_settings, height=6, wrap="word")
         self.api_prompt.insert("1.0", self.config.openai_prompt)
@@ -143,6 +145,7 @@ class App:
         self.api_extra.pack(fill="x")
         ttk.Label(api_settings, text="URLは /v1 等のベースURL、または選択したAPIの完全URL。互換サーバーに合わせてJSON方式・store指定を変更できます。\n"
                   "DecisionsはAPI方式で明示選択。JSON方式・出力上限・storeは送信せず、文章の理由は生成しません。\n"
+                  "同時リクエスト数（1〜16）はAPI／Ollamaで写真を並列に評価します。429/503はRetry-Afterに従い全体で待機して再試行します。\n"
                   "キー不要のローカルAPIでは環境変数名を空欄にします。変更後は「設定・実行」タブから保存・再開してください。",
                   wraplength=930).pack(anchor="w", pady=12)
 
@@ -206,6 +209,8 @@ class App:
         cfg.existing_policy = "preserve" if self.vars["preserve"].get() else "overwrite"
         cfg.openai_timeout = float(self.vars["openai_timeout"].get())
         cfg.openai_max_output_tokens = int(self.vars["openai_max_output_tokens"].get())
+        cfg.api_concurrency = int(self.vars["api_concurrency"].get())
+        cfg.api_rate_limit_retries = int(self.vars["api_rate_limit_retries"].get())
         cfg.openai_store = {"false": False, "true": True, "omit": None}[self.vars["openai_store"].get()]
         cfg.openai_prompt = self.api_prompt.get("1.0", "end-1c").strip()
         cfg.openai_extra_body = json.loads(self.api_extra.get("1.0", "end-1c"))

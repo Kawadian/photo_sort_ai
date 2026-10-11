@@ -275,6 +275,7 @@ GUIの評価方法を「OpenAI互換API」に変更し、「API設定」タブ�
 | モデル | 指定先で利用できる**画像対応モデルの実際のID**。初期値は空欄 |
 | JSON方式 | `json_object`、厳密スキーマの`json_schema`、形式指定を省略する`none` |
 | APIキー | 環境変数名を設定。既定は`OPENAI_API_KEY`。GUIで起動中だけ有効なキーを入力することも可能 |
+| 同時リクエスト数 | `api_concurrency`。既定1（1枚ずつ）、最大16。下記「同時リクエスト」参照 |
 | 画像詳細 | `auto`／`low`／`high`／`omit`。対応しない互換サーバーでは`omit` |
 | 出力トークン上限 | 既定2048。Chatでは`max_completion_tokens`、Responsesでは`max_output_tokens`。0で省略 |
 | store指定 | 既定false。互換サーバーで未対応なら`omit`。この指定の扱いはサービスに依存 |
@@ -318,6 +319,16 @@ APIのベンチマークは実際に指定先へ写真を送信して評価し�
 返答のusageを結果details・CSVへ保存します。0〜100点は星からの変換値です。
 
 公式仕様：[画像入力](https://developers.openai.com/api/docs/guides/images-vision) / [構造化出力](https://developers.openai.com/api/docs/guides/structured-outputs)
+
+#### 同時リクエスト（並列評価）
+
+API方式とOllamaでは`api_concurrency`（GUIは「同時リクエスト数」、CLIは`--api-concurrency`）で写真を並列に評価できます。
+既定は1で従来どおり1枚ずつです。1〜16を指定でき、API側の待ち時間が長いほど効果があります。
+並列化するのは画像準備とAPI呼び出しだけで、星の書き込み・SQLiteの保存・ログ出力は1本のスレッドで行うため、結果の形式と保存内容は1枚ずつの場合と同じです。
+
+HTTP 429／503が返った場合は`Retry-After`（なければ2秒からの指数バックオフ、最大120秒）だけ**全ワーカーをまとめて待機**させ、`api_rate_limit_retries`回（既定2）まで再送します。
+それでも失敗した写真は従来どおりエラーとして記録し、`retry_seconds`・`max_retries`の設定で後から再試行します。
+Ollamaは既定で1件ずつ処理するため、並列の効果を得るにはOllama側の`OLLAMA_NUM_PARALLEL`も設定してください。
 
 #### Decisions API
 

@@ -5,5 +5,6 @@
   "openai_api_mode": "openrouter_decisions",
   "openai_model": "openai/gpt-6-luna-decisions",
   "openai_api_key_env": "OPENROUTER_API_KEY",
-  "output": "report"
+  "output": "report",
+  "api_concurrency": 4
 }
