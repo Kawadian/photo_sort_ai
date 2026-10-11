@@ -33,3 +33,13 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install -e '.[onnx]' onnx
       - run: python tests/onnx_smoke.py
+  raw:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl
+      - run: python -m pip install -e '.[raw]' tifffile
+      - run: python tests/raw_smoke.py

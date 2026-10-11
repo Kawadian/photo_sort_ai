@@ -238,6 +238,7 @@ python -m compileall -q src
 GitHub ActionsでWindows／Ubuntuの基本テスト、ExifToolのXMP・画素保持、WindowsのGUI起動・PowerShell構文を確認します。
 実モデルの取得・CPU実行は`Optional CPU model smoke`ワークフローを手動実行できます。
 同ワークフローでは、テスト用ONNXのNCHW/NHWC入力と実際のCPU推論も確認します。
+また、合成したCFAセンサーDNGのLibRaw読み込み・RAW現像・星書き込み後のRAW画素保持を確認します。
 テスト用DNGはTIFFにDNGタグを付けたコンテナで、全カメラのセンサーRAW現像・互換性の検証ではありません。
 
 参照：[IQA-PyTorch](https://github.com/chaofengc/IQA-PyTorch) / [モデル設定](https://github.com/chaofengc/IQA-PyTorch/blob/main/pyiqa/default_model_configs.py) / [ExifTool](https://exiftool.org/) / [PyTorch](https://pytorch.org/get-started/locally/)

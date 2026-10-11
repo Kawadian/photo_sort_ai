@@ -155,8 +155,14 @@ class OnnxScorer:
             raise ValueError(f"ONNXプロバイダが利用できません: {config.onnx_provider}")
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = config.cpu_threads
+        if config.onnx_provider == "DmlExecutionProvider":
+            opts.enable_mem_pattern = False
+            opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         self.session = ort.InferenceSession(config.onnx_path, sess_options=opts,
                                            providers=[config.onnx_provider])
+        if config.onnx_provider not in self.session.get_providers():
+            raise RuntimeError("指定したONNXプロバイダを初期化できませんでした。GPUドライバ・ランタイムを確認してください。")
+        self.session.disable_fallback()
         self.config = config
         if len(self.session.get_inputs()) != 1:
             raise ValueError("ONNX方式は単一のfloat32画像入力モデルに対応しています。")
