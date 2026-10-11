@@ -9,3 +9,4 @@ config.json
 *.sqlite3*
 *.log
 .pytest_cache/
+web-test-output/

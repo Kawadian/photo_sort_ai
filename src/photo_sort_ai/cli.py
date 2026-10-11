@@ -29,7 +29,13 @@ def parser() -> argparse.ArgumentParser:
     init.add_argument("--folder", action="append")
     init.add_argument("--preset", choices=PRESETS, default="light")
     init.add_argument("--overwrite", action="store_true")
-    sub.add_parser("gui", help="日本語の操作画面を開く")
+    web = sub.add_parser("web", help="ブラウザーで操作するWebUIを起動")
+    web.add_argument("--public", action="store_true", help="外部アクセスを許可（パスワードと公開URLが必須）")
+    web.add_argument("--host", help="待ち受け先。既定は127.0.0.1、--public時は0.0.0.0")
+    web.add_argument("--port", type=int, default=8765)
+    web.add_argument("--public-url", help="アクセスする公開URL（例: https://photos.example.com）")
+    web.add_argument("--password-env", default="PHOTO_SORT_WEB_PASSWORD", help="WebUIパスワードの環境変数名")
+    web.add_argument("--no-browser", action="store_true", help="起動時にブラウザーを開かない")
     sub.add_parser("doctor", help="依存・ExifTool・設定の確認")
     sub.add_parser("models", help="利用できる評価プリセットを一覧")
     sub.add_parser("prepare-models", help="選択したモデルを事前取得・初期化")
@@ -61,7 +67,7 @@ def parser() -> argparse.ArgumentParser:
 
 def doctor(config: Config) -> dict:
     installed = {}
-    for name in ["numpy", "PIL", "torch", "pyiqa", "rawpy", "onnxruntime", "tkinter"]:
+    for name in ["numpy", "PIL", "torch", "pyiqa", "rawpy", "onnxruntime", "flask", "waitress"]:
         installed[name] = importlib.util.find_spec(name) is not None
     versions = {}
     for name in ["numpy", "Pillow", "torch", "pyiqa", "rawpy", "onnxruntime", "onnxruntime-directml"]:
@@ -91,9 +97,10 @@ def main(argv=None) -> int:
             output({"config": str(args.config.resolve())})
             return 0
         cfg = load_config(args.config) if args.config.exists() else Config()
-        if args.command == "gui":
-            from .gui import run_gui
-            run_gui(cfg, args.config)
+        if args.command == "web":
+            from .web import run_web
+            run_web(cfg, args.config, public=args.public, host=args.host, port=args.port,
+                    public_url=args.public_url, password_env=args.password_env, open_browser=not args.no_browser)
             return 0
         if args.command == "models":
             for name, (backend, metrics) in PRESETS.items():

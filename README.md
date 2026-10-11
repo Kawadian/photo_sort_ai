@@ -1,17 +1,17 @@
 # Photo Sort AI
 
 Windows／Linuxで写真フォルダを監視し、評価して星1〜5を付けるアプリです。
-CLI・日本語GUIの両方に対応。ローカル評価に加え、任意のOpenAI互換APIも選べます。
+CLI・日本語WebUIの両方に対応。ローカル評価に加え、任意のOpenAI互換APIも選べます。
 Ryzen 5 5500UのCPUによる常時処理と、RTX 3070などのCUDA GPUによる一括処理に対応します。
 写真の削除・移動は行いません。低評価の写真を管理ソフト側で絞り込むための選別補助です。
 
 ## Windowsで始める
 
-1. Python **3.11（64bit推奨）** をインストールする。Tkinterを含むpython.orgの通常版を使えます。
+1. Python **3.11（64bit推奨）** をインストールする。python.orgの通常版を使えます。
 2. リポジトリをクローン、または「Code → Download ZIP」で取得して展開する。
 3. **`install.bat`** を実行。CPU版PyTorch・専用AI・RAW読み込みを導入します。
-4. **`start.bat`** を開き、「対象フォルダ」を追加して設定を保存する。
-5. 「時間を実測（20枚）」で速度を測り、「一括評価」または「監視開始」を押す。
+4. **`start.bat`** を開き、ブラウザーで「評価設定」を開き、対象フォルダを1行ずつ入力して設定を保存する。
+5. 「処理時間を計測」で速度を測り、「一括評価」または「フォルダ監視を開始」を押す。
 
 インストーラーの初期設定は **MUSIQ＋NIMA / CPU / 2スレッド / 低優先度**。
 初回はインターネット接続と、数GB程度の空き容量が必要になる場合があります。
@@ -55,16 +55,16 @@ JPEG/PNG等を`report`方式で評価するだけならExifToolは不要です�
 
 ## Linuxで始める
 
-Python **3.11以上**、Bash、venvが必要です。GUIはWindowsと同じTkinterの画面です。
+Python **3.11以上**、Bash、venvが必要です。ブラウザーでWindowsと同じWebUIを使えます。
 Ubuntu／Debianでシステム標準Pythonを使う場合の依存導入例：
 
 ```bash
 sudo apt update
-sudo apt install python3 python3-venv python3-tk libimage-exiftool-perl fonts-noto-cjk xdg-utils
+sudo apt install python3 python3-venv libimage-exiftool-perl
 ```
 
-Python 3.11を別途導入する場合は、そのPythonのvenv・Tkinterパッケージも導入してください。
-Fedoraでは`python3-tkinter`と`perl-Image-ExifTool`等、ディストリビューションに合ったパッケージを使用します。
+Python 3.11を別途導入する場合は、そのPythonのvenvパッケージも導入してください。
+Fedoraでは`python3`と`perl-Image-ExifTool`等、ディストリビューションに合ったパッケージを使用します。
 セットアップスクリプトはシステムパッケージの導入やsudo実行を自動では行いません。
 
 ```bash
@@ -75,7 +75,7 @@ Fedoraでは`python3-tkinter`と`perl-Image-ExifTool`等、ディストリビュ
 # 軽量解析・API用：PyTorchなし
 ./install.sh --minimal
 
-# CUDA版。GUIの実行デバイスもcudaへ変更
+# CUDA版。WebUIの実行デバイスもcudaへ変更
 ./install.sh --device cuda
 
 # 独自ONNXをCPUで利用
@@ -86,12 +86,72 @@ Fedoraでは`python3-tkinter`と`perl-Image-ExifTool`等、ディストリビュ
 ```
 
 ZIP展開等で実行権限がない場合は`chmod +x install.sh start.sh watch.sh`、または`bash install.sh`で起動できます。
-設定画面を表示するにはデスクトップのDISPLAY／Wayland-XWayland環境が必要です。
-SSHのみの環境ではCLIを使用します。CLIはTkinter・GUIディスプレイを必要としません。
+WebUIはTkinter・デスクトップ・DISPLAYを必要としません。SSHのみのサーバーでも起動できます。
+ローカル限定ならSSHポート転送、別端末から直接使うなら後述の外部公開設定を利用してください。
 LinuxではDirectMLを使用せず、CPUまたはCUDAを選択します。
 CPU版／CUDA版を切り替える場合は、停止後に`.venv`を作り直してセットアップしてください。
 状態の既定保存先は`~/.local/share/PhotoSortAI`、設定はリポジトリの`config.json`です。
 自動起動が必要な場合は、設定後の`watch.sh`をデスクトップの自動起動やユーザーサービスから実行できます。
+
+## WebUI：ローカル利用・外部公開
+
+既定は`http://127.0.0.1:8765`。`start.bat`／`./start.sh`はWebUIを起動してブラウザーを開きます。
+ブラウザーを閉じても評価・監視は続きます。画面の「停止」は評価処理を止め、ターミナルのCtrl+CはWebUIも終了します。
+CLIの`scan`／`watch`等も引き続き利用できます。旧Tkinter GUIは削除しました。
+
+| 用途 | オプション | アクセス |
+|---|---|---|
+| 同じPCのみ | 指定不要 | `127.0.0.1:8765`、他端末から接続不可 |
+| SSHポート転送 | `--no-browser` | サーバーはローカル限定のまま。`ssh -L 8765:127.0.0.1:8765 user@server` |
+| LAN内の別端末 | `--public --public-url http://サーバーIP:8765 --no-browser` | 全インターフェース待ち受け＋パスワードログイン |
+| インターネット公開 | `--public --host 127.0.0.1 --public-url https://photos.example.com --no-browser` | HTTPSリバースプロキシ経由＋パスワードログイン |
+
+外部公開時は12文字以上のパスワードを環境変数`PHOTO_SORT_WEB_PASSWORD`に設定します。
+設定がなければ起動を拒否します。パスワードをコマンド引数・設定JSONへ保存しません。
+ローカル利用でもこの環境変数を設定するとログインが必要になります。
+
+```powershell
+# Windows：LANへ公開。IPは自分のPCのものに変更
+$env:PHOTO_SORT_WEB_PASSWORD = "自分で決めた12文字以上のパスワード"
+.\start.bat --public --public-url http://192.168.1.50:8765 --no-browser
+```
+
+```bash
+# Linux：LANへ公開
+export PHOTO_SORT_WEB_PASSWORD='自分で決めた12文字以上のパスワード'
+./start.sh --public --public-url http://192.168.1.50:8765 --no-browser
+
+# ポートを変更する場合、公開URLのポートも合わせる
+./start.sh --public --port 9000 --public-url http://192.168.1.50:9000 --no-browser
+
+# CLIから同じWebUIを起動
+.venv/bin/python -m photo_sort_ai --config config.json web --no-browser
+```
+
+`--host`は待ち受け先、`--public-url`はブラウザーでアクセスするURLです。
+公開URLはHost／Origin検査に使います。公開モードは指定したURLのみを受け付け、別のIPやドメインでは操作できません。
+URLのパス以下での設置には対応しないので、専用サブドメインを使用してください。
+LAN HTTPは通信を暗号化しません。インターネット公開にはCaddy等でHTTPSを終端します。
+たとえばCaddyの設定は次の形です（WebUIを上表のインターネット公開オプションで起動）：
+
+```caddyfile
+photos.example.com {
+    reverse_proxy 127.0.0.1:8765
+}
+```
+
+Caddyが別のコンテナ・ホストにある場合は、WebUIの`--host`をそのネットワークから接続できるアドレスに変更します。
+その構成ではバックエンドへの通信をプロキシからに制限してください。HTTPS設定時のセッションCookieはSecure属性付きです。
+WebUIはWindows／Linux共通のFlask＋Waitressで動かし、開発用サーバーは使用しません。
+認証、CSRFトークン、Host／Origin検査、ログイン試行回数制限を実装しています。
+ログインした利用者はサーバー上の写真・設定を操作できます。複数ユーザーの権限分離には対応しません。
+
+設定・対象フォルダ・ExifTool／ONNXの場所は**サーバー側**のパスです。
+Windows上なら`D:/Photos`、Linux/LXC上なら`/mnt/photos`等を指定します。
+評価結果・確率分布・理由・処理時間の確認、縮小プレビュー、CSVと類似候補JSONのダウンロードに対応します。
+元のRAWをそのまま配信する機能はありません。プレビューは設定した対象フォルダ内の評価済み写真に限ります。
+保存した設定・評価履歴は旧GUIと共通で、移行のために作り直す必要はありません。
+評価中の設定保存・履歴リセットは拒否します。停止後に変更してください。
 
 ## 評価方式
 
@@ -184,13 +244,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\startup.ps1 -Remove
 ```
 
 画面を表示せず`watch`を実行します。停止する場合はタスクマネージャーで該当`pythonw.exe`を終了してください。
-GUIから監視を重ねて開始した場合は二重処理を防ぐエラーになります。
+WebUIから監視を重ねて開始した場合は二重処理を防ぐエラーになります。
 コンソール表示で監視する場合は`watch.bat`を使えます。
 
 ## コマンドライン
 
 Windowsでセットアップ済みの例。Linuxでは`.venv/bin/python -m photo_sort_ai ...`で同じサブコマンドを使えます。
-GUIにはTkinterとデスクトップ環境が必要です。
+WebUIは`web`サブコマンドで起動します。旧`gui`サブコマンド・Tkinter実装は削除しました。
 
 ```powershell
 # --configはサブコマンドの前に指定
@@ -266,7 +326,7 @@ rating(整数1〜5)とreasonを検査し、不正な返答を保存しません�
 ### OpenAI／OpenAI互換API
 
 追加SDKは不要です。Windowsは`install.ps1 -Minimal`、Linuxは`./install.sh --minimal`でも利用できます。
-GUIの評価方法を「OpenAI互換API」に変更し、「API設定」タブで次を設定してから保存・実行してください。
+WebUIの評価方法を「OpenAI互換API」に変更し、「API接続」画面で次を設定してから保存・実行してください。
 
 | 設定 | 内容 |
 |---|---|
@@ -274,15 +334,16 @@ GUIの評価方法を「OpenAI互換API」に変更し、「API設定」タブ�
 | API方式 | `chat_completions`／`responses`／`decisions`（OpenAI形式）／`openrouter_decisions`（OpenRouter形式）。指定先が対応する方式を明示的に選ぶ |
 | モデル | 指定先で利用できる**画像対応モデルの実際のID**。初期値は空欄 |
 | JSON方式 | `json_object`、厳密スキーマの`json_schema`、形式指定を省略する`none` |
-| APIキー | 環境変数名を設定。既定は`OPENAI_API_KEY`。GUIで起動中だけ有効なキーを入力することも可能 |
+| APIキー | 環境変数名を設定。既定は`OPENAI_API_KEY`。WebUIで起動中だけ有効なキーを入力することも可能 |
 | 同時リクエスト数 | `api_concurrency`。既定1（1枚ずつ）、最大16。下記「同時リクエスト」参照 |
 | 画像詳細 | `auto`／`low`／`high`／`omit`。対応しない互換サーバーでは`omit` |
 | 出力トークン上限 | 既定2048。Chatでは`max_completion_tokens`、Responsesでは`max_output_tokens`。0で省略 |
 | store指定 | 既定false。互換サーバーで未対応なら`omit`。この指定の扱いはサービスに依存 |
-| 追加パラメータ | JSON設定の`openai_extra_body`、またはGUI。temperature・reasoning_effort等を指定先に合わせて設定 |
+| 追加パラメータ | JSON設定の`openai_extra_body`、またはWebUI。temperature・reasoning_effort等を指定先に合わせて設定 |
 
 URLへの認証情報・クエリ・フラグメントの埋め込みには対応しません。認証はBearerヘッダーです。
-APIキーそのものは設定JSON・結果・ログへ保存しません。GUI入力はそのプロセスの環境変数へ設定し、再起動後は再入力が必要です。
+APIキーそのものは設定JSON・結果・ログへ保存しません。WebUI入力はサーバープロセスの環境変数へ設定し、再起動後は再入力が必要です。
+WebUIから入力するキーの変数名は`OPENAI_API_KEY`／`OPENROUTER_API_KEY`等、`_API_KEY`で終わる名前を使います。他の名前はサーバー起動前に環境変数で設定できます。
 キー不要のローカル互換APIは環境変数名を空欄にできます。変数名を指定してキーが未設定なら、送信前にエラーにします。
 
 ```powershell
@@ -299,7 +360,7 @@ export OPENAI_API_KEY='自分のAPIキー'
 
 [OpenAI公式用の設定例](examples/openai-api.json)と[ローカル互換API用の設定例](examples/openai-compatible-local.json)があります。
 モデルID・写真フォルダ・URLを自分の環境に合わせて変更してください。
-GUIを使わずに実行する場合は、設定例JSONを編集するかCLIの一時上書きを使えます。Linuxの例：
+WebUIを使わずに実行する場合は、設定例JSONを編集するかCLIの一時上書きを使えます。Linuxの例：
 
 ```bash
 .venv/bin/python -m photo_sort_ai scan --preset openai \
@@ -322,7 +383,7 @@ APIのベンチマークは実際に指定先へ写真を送信して評価し�
 
 #### 同時リクエスト（並列評価）
 
-API方式とOllamaでは`api_concurrency`（GUIは「同時リクエスト数」、CLIは`--api-concurrency`）で写真を並列に評価できます。
+API方式とOllamaでは`api_concurrency`（WebUIは「API同時処理数」、CLIは`--api-concurrency`）で写真を並列に評価できます。
 既定は1で従来どおり1枚ずつです。1〜16を指定でき、API側の待ち時間が長いほど効果があります。
 並列化するのは画像準備とAPI呼び出しだけで、星の書き込み・SQLiteの保存・ログ出力は1本のスレッドで行うため、結果の形式と保存内容は1枚ずつの場合と同じです。
 
@@ -333,7 +394,7 @@ Ollamaは既定で1件ずつ処理するため、並列の効果を得るにはO
 #### Decisions API
 
 モデル名だけを変更しても、Decisionsの返答はChat／Responsesでは読み取れません。
-カスタムエンドポイントではモデル情報を取得できない場合もあるため、自動判別せずGUIの「API方式」またはCLIの`--api-mode`で切り替えます。
+カスタムエンドポイントではモデル情報を取得できない場合もあるため、自動判別せずWebUIの「API方式」またはCLIの`--api-mode`で切り替えます。
 モデル固有の分岐はなく、指定した形式と画像入力に対応するDecisionsモデルを利用できます。
 
 | 接続先 | API URL | API方式 | モデル例 |
@@ -342,7 +403,7 @@ Ollamaは既定で1件ずつ処理するため、並列の効果を得るにはO
 | OpenAI | `https://api.openai.com/v1` | `decisions` | `gpt-6-luna` |
 
 [OpenRouter Decisions設定例](examples/openrouter-decisions.json)を利用できます。APIキーの環境変数名は`OPENROUTER_API_KEY`です。
-LinuxでもWindowsでも、GUIの同じAPI設定から利用できます。
+LinuxでもWindowsでも、WebUIの同じAPI設定から利用できます。
 
 Decisionsでは5つの星を選択肢として送信し、`answers`の`rating`に返った`choice`（1〜5）を星に保存します。
 自由な文章の理由は生成しません。返った選択結果・確率分布・confidenceは結果details／CSVの`decision`に保存します。
@@ -367,7 +428,7 @@ python -m unittest discover -s tests -v
 python -m compileall -q src
 ```
 
-GitHub ActionsでWindows／Ubuntuの基本テスト、ExifToolのXMP・画素保持、両OSのGUI起動・軽量セットアップとスクリプト構文を確認します。
+GitHub ActionsでWindows／Ubuntuの基本テスト、ExifToolのXMP・画素保持、両OSのWebUI実HTTP起動・軽量セットアップとスクリプト構文を確認します。
 APIテストはローカルの模擬HTTPサーバーを使用し、外部APIへの送信は行いません。
 実モデルの取得・CPU実行は`Optional CPU model smoke`ワークフローを手動実行できます。
 同ワークフローでは、テスト用ONNXのNCHW/NHWC入力と実際のCPU推論も確認します。

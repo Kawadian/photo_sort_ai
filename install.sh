@@ -48,8 +48,5 @@ fi
 if ((!photo_skip_exiftool)) && ! command -v exiftool >/dev/null 2>&1; then
     printf '%s\n' 'ExifTool is missing. Ubuntu/Debian: sudo apt install libimage-exiftool-perl'
 fi
-if ! "$photo_python" -c 'import tkinter' >/dev/null 2>&1; then
-    printf '%s\n' 'GUI requires Tkinter. Ubuntu/Debian: sudo apt install python3-tk (or python3.11-tk for Python 3.11)'
-fi
 "$photo_python" -m photo_sort_ai doctor
-printf '%s\n' 'Setup complete. Desktop GUI: ./start.sh; CLI: .venv/bin/python -m photo_sort_ai --help'
+printf '%s\n' 'Setup complete. WebUI: ./start.sh; CLI: .venv/bin/python -m photo_sort_ai --help'

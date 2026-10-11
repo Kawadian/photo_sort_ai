@@ -5,5 +5,5 @@ if not exist ".venv\Scripts\python.exe" (
     pause
     exit /b 1
 )
-".venv\Scripts\python.exe" -m photo_sort_ai --config "%~dp0config.json" gui
+".venv\Scripts\python.exe" -m photo_sort_ai --config "%~dp0config.json" web %*
 if errorlevel 1 pause

@@ -17,7 +17,7 @@ jobs:
       - run: python -m pip install -e .
       - name: Install ExifTool (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl python3-tk xvfb
+        run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl
       - name: Install ExifTool (Windows)
         if: runner.os == 'Windows'
         run: choco install exiftool -y --no-progress
@@ -33,12 +33,8 @@ jobs:
             [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$tokens, [ref]$parseErrors) | Out-Null
             if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
           }
-      - name: GUI smoke test (Windows)
-        if: runner.os == 'Windows'
-        run: python tests/gui_smoke.py
-      - name: GUI smoke test (Linux)
-        if: runner.os == 'Linux'
-        run: xvfb-run -a python tests/gui_smoke.py
+      - name: WebUI real HTTP smoke test
+        run: python tests/web_smoke.py
       - name: Parse Linux scripts and run minimal installer
         if: runner.os == 'Linux'
         run: |
@@ -48,3 +44,17 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: .\install.ps1 -Minimal -SkipExifTool
+      - uses: actions/setup-node@v4
+        if: runner.os == 'Linux'
+        with:
+          node-version: '22'
+      - name: Browser interaction and mobile layout
+        if: runner.os == 'Linux'
+        run: |
+          npm install --prefix "$RUNNER_TEMP/photo-browser" --no-save playwright
+          NODE_PATH="$RUNNER_TEMP/photo-browser/node_modules" PHOTO_SORT_BROWSER="$(command -v google-chrome)" node tests/web_browser_smoke.cjs
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os == 'Linux'
+        with:
+          name: webui-screenshots
+          path: web-test-output/
