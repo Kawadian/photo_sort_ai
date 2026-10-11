@@ -5,6 +5,8 @@ import json
 import logging
 import os
 import queue
+import shutil
+import subprocess
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -18,7 +20,7 @@ PRESET_LABELS = {
     "light": "軽量解析（AIなし）", "quality": "MUSIQ：画質", "aesthetic": "NIMA：見栄え",
     "balanced": "MUSIQ＋NIMA：合算", "topiq": "TOPIQ：画質", "clip": "CLIPIQA：画質",
     "laion": "LAION：見栄え", "technical": "BRISQUE＋NIQE：技術評価",
-    "ollama": "Ollama：ローカル画像AI", "onnx": "ONNX：独自モデル", "custom": "カスタム（JSON設定）",
+    "ollama": "Ollama：ローカル画像AI", "openai": "OpenAI互換API", "onnx": "ONNX：独自モデル", "custom": "カスタム（JSON設定）",
 }
 STATUS_LABELS = {"written": "星を保存", "sidecar": "XMPへ保存", "report": "結果のみ", "protected": "既存の星を保護"}
 
@@ -45,13 +47,15 @@ class App:
         frame = ttk.Frame(self.root, padding=14)
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, text="写真を置くだけで、星評価を自動で付ける", font=("", 16, "bold")).pack(anchor="w")
-        ttk.Label(frame, text="CPUで常時監視／GPUで一括処理。写真の削除は行いません。").pack(anchor="w", pady=(4, 12))
+        ttk.Label(frame, text="CPU・GPU・APIで評価。写真の削除は行いません。").pack(anchor="w", pady=(4, 12))
         notebook = ttk.Notebook(frame)
         notebook.pack(fill="both", expand=True)
         settings = ttk.Frame(notebook, padding=12)
+        api_settings = ttk.Frame(notebook, padding=12)
         results = ttk.Frame(notebook, padding=12)
         logs = ttk.Frame(notebook, padding=12)
         notebook.add(settings, text="設定・実行")
+        notebook.add(api_settings, text="API設定")
         notebook.add(results, text="評価結果")
         notebook.add(logs, text="ログ")
 
@@ -109,6 +113,38 @@ class App:
         ttk.Button(actions, text="停止", command=lambda: self.stop.set()).pack(side="left")
         ttk.Button(settings, text="失敗した写真の再試行を許可", command=self.retry_errors).pack(anchor="w", pady=8)
 
+        ttk.Label(api_settings, text="評価方法で「OpenAI互換API」を選ぶと、縮小したJPEGを指定先へ送信して評価します。\n"
+                  "APIキーは環境変数から取得、またはこの起動中だけ入力して使えます。設定JSONには保存しません。",
+                  wraplength=930).pack(anchor="w", pady=(0, 12))
+        api_grid = ttk.Frame(api_settings)
+        api_grid.pack(fill="x")
+        api_grid.columnconfigure(1, weight=1)
+        api_grid.columnconfigure(3, weight=1)
+        self.field(api_grid, 0, 0, "API URL", "openai_base_url", self.config.openai_base_url)
+        self.field(api_grid, 0, 2, "画像対応モデル名", "openai_model", self.config.openai_model)
+        self.field(api_grid, 1, 0, "API方式", "openai_api_mode", self.config.openai_api_mode, ["chat_completions", "responses"])
+        self.field(api_grid, 1, 2, "JSON方式", "openai_response_format", self.config.openai_response_format, ["json_object", "json_schema", "none"])
+        self.field(api_grid, 2, 0, "APIキーの環境変数", "openai_api_key_env", self.config.openai_api_key_env)
+        ttk.Label(api_grid, text="APIキー（起動中のみ）").grid(row=2, column=2, sticky="w", padx=(0, 8), pady=4)
+        self.api_key = tk.StringVar()
+        ttk.Entry(api_grid, textvariable=self.api_key, show="*").grid(row=2, column=3, sticky="ew", padx=(0, 16), pady=4)
+        self.field(api_grid, 3, 0, "画像詳細", "openai_image_detail", self.config.openai_image_detail, ["auto", "low", "high", "omit"])
+        self.field(api_grid, 3, 2, "API待機時間（秒）", "openai_timeout", self.config.openai_timeout)
+        self.field(api_grid, 4, 0, "出力トークン上限", "openai_max_output_tokens", self.config.openai_max_output_tokens)
+        store = "omit" if self.config.openai_store is None else str(self.config.openai_store).lower()
+        self.field(api_grid, 4, 2, "APIのstore指定", "openai_store", store, ["false", "true", "omit"])
+        ttk.Label(api_settings, text="評価プロンプト（rating:整数1〜5、reason:文字列のJSONを返す指示を付加します）").pack(anchor="w", pady=(14, 4))
+        self.api_prompt = tk.Text(api_settings, height=6, wrap="word")
+        self.api_prompt.insert("1.0", self.config.openai_prompt)
+        self.api_prompt.pack(fill="x")
+        ttk.Label(api_settings, text="追加パラメータ（JSON。例: reasoning_effort、temperature。対応は指定先・モデルに依存）").pack(anchor="w", pady=(12, 4))
+        self.api_extra = tk.Text(api_settings, height=3, wrap="word")
+        self.api_extra.insert("1.0", json.dumps(self.config.openai_extra_body, ensure_ascii=False))
+        self.api_extra.pack(fill="x")
+        ttk.Label(api_settings, text="URLは /v1 等のベースURL、または選択したAPIの完全URL。互換サーバーに合わせてJSON方式・store指定を変更できます。\n"
+                  "キー不要のローカルAPIでは環境変数名を空欄にします。変更後は「設定・実行」タブから保存・再開してください。",
+                  wraplength=930).pack(anchor="w", pady=12)
+
         columns = ("file", "rating", "score", "status", "seconds")
         self.tree = ttk.Treeview(results, columns=columns, show="headings", selectmode="browse")
         for key, label, width in [("file", "ファイル", 410), ("rating", "AIの星", 70), ("score", "点数", 80),
@@ -154,7 +190,9 @@ class App:
             cfg.use_preset(preset)
         else:
             cfg.preset = "custom"
-        for key in ["device", "output", "image_source", "exiftool_path", "ollama_model", "onnx_path", "onnx_provider"]:
+        for key in ["device", "output", "image_source", "exiftool_path", "ollama_model", "onnx_path", "onnx_provider",
+                    "openai_base_url", "openai_model", "openai_api_mode", "openai_response_format",
+                    "openai_api_key_env", "openai_image_detail"]:
             setattr(cfg, key, self.vars[key].get().strip())
         for key in ["max_side", "cpu_threads"]:
             setattr(cfg, key, int(self.vars[key].get()))
@@ -165,9 +203,18 @@ class App:
         for key in ["recursive", "low_priority", "backup"]:
             setattr(cfg, key, self.vars[key].get())
         cfg.existing_policy = "preserve" if self.vars["preserve"].get() else "overwrite"
+        cfg.openai_timeout = float(self.vars["openai_timeout"].get())
+        cfg.openai_max_output_tokens = int(self.vars["openai_max_output_tokens"].get())
+        cfg.openai_store = {"false": False, "true": True, "omit": None}[self.vars["openai_store"].get()]
+        cfg.openai_prompt = self.api_prompt.get("1.0", "end-1c").strip()
+        cfg.openai_extra_body = json.loads(self.api_extra.get("1.0", "end-1c"))
         if cfg.onnx_path and not Path(cfg.onnx_path).is_absolute():
             cfg.onnx_path = str((self.config_path.parent / cfg.onnx_path).resolve())
         cfg.validate(require_folders)
+        if cfg.backend == "openai" and self.api_key.get().strip():
+            if not cfg.openai_api_key_env:
+                raise ValueError("APIキーを入力する場合は環境変数名も指定してください。")
+            os.environ[cfg.openai_api_key_env] = self.api_key.get().strip()
         return cfg
 
     def save(self):
@@ -202,7 +249,9 @@ class App:
                 if mode == "prepare":
                     from .scoring import create_scorer
                     create_scorer(cfg)
-                    self.events.put({"kind": "log", "message": "モデルの初期化が完了しました。Ollamaのモデルは別途ollama pullで取得してください。"})
+                    message = ("APIの設定・キー取得を確認しました。接続確認は評価または時間の実測で行ってください。"
+                               if cfg.backend == "openai" else "モデルの初期化が完了しました。Ollamaのモデルは別途ollama pullで取得してください。")
+                    self.events.put({"kind": "log", "message": message})
                     return
                 with Engine(cfg, self.events.put, self.stop) as engine:
                     if mode == "watch":
@@ -311,8 +360,17 @@ class App:
     def open_selected(self):
         selected = self.tree.selection()
         path = next((p for p, item in self.row_paths.items() if selected and item == selected[0]), None)
-        if path and os.name == "nt":
-            os.startfile(str(Path(path).parent))
+        if path:
+            try:
+                directory = str(Path(path).parent)
+                if os.name == "nt":
+                    os.startfile(directory)
+                elif shutil.which("xdg-open"):
+                    subprocess.Popen(["xdg-open", directory], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    messagebox.showinfo("写真の場所", directory)
+            except OSError as error:
+                messagebox.showerror("場所を開けませんでした", str(error))
 
     def close(self):
         self.closing = True

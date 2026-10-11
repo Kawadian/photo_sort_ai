@@ -106,7 +106,8 @@ def main(argv=None) -> int:
         if args.command == "prepare-models":
             create_scorer(cfg)
             output({"status": "ready", "preset": cfg.preset,
-                    "note": "Ollamaのモデル取得は ollama pull、ONNXはローカルモデル配置を別途行ってください。"})
+                    "note": ("API設定・キー取得を確認しました。API呼び出しは行っていません。"
+                             if cfg.backend == "openai" else "Ollamaのモデル取得は ollama pull、ONNXはローカルモデル配置を別途行ってください。")})
             return 0
         if args.command in {"export", "duplicates"}:
             store = Store(state_dir)

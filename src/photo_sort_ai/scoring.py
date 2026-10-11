@@ -191,5 +191,8 @@ class OnnxScorer:
 
 def create_scorer(config: Config):
     config.validate(require_folders=False)
+    if config.backend == "openai":
+        from .openai_api import OpenAICompatibleScorer
+        return OpenAICompatibleScorer(config)
     return {"heuristic": HeuristicScorer, "pyiqa": PyiqaScorer,
             "ollama": OllamaScorer, "onnx": OnnxScorer}[config.backend](config)

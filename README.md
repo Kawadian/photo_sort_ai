@@ -1,6 +1,7 @@
 # Photo Sort AI
 
-Windowsで写真フォルダを監視し、ローカルで評価して星1〜5を付けるアプリです。
+Windows／Linuxで写真フォルダを監視し、評価して星1〜5を付けるアプリです。
+CLI・日本語GUIの両方に対応。ローカル評価に加え、任意のOpenAI互換APIも選べます。
 Ryzen 5 5500UのCPUによる常時処理と、RTX 3070などのCUDA GPUによる一括処理に対応します。
 写真の削除・移動は行いません。低評価の写真を管理ソフト側で絞り込むための選別補助です。
 
@@ -15,7 +16,8 @@ Ryzen 5 5500UのCPUによる常時処理と、RTX 3070などのCUDA GPUによる
 インストーラーの初期設定は **MUSIQ＋NIMA / CPU / 2スレッド / 低優先度**。
 初回はインターネット接続と、数GB程度の空き容量が必要になる場合があります。
 専用AIの重みは初回利用時に取得します。「モデル準備」で先に取得することもできます。
-取得後の画像評価はローカルで行います。クラウドAI APIやAPIキーは使いません。
+ローカル方式は取得後の画像評価をローカルで行い、クラウドAI APIやAPIキーを使いません。
+`openai`方式を選んだ場合は、指定したAPIへ縮小したJPEGを送信します。
 オフライン運用前に、使用するプリセットで準備・評価を一度実行してください。
 
 ### 導入パターン
@@ -51,6 +53,45 @@ DNG/JPEG/TIFF内部へ星を書き込むには[ExifTool](https://exiftool.org/)�
 PATH更新後はターミナル／アプリを開き直してください。
 JPEG/PNG等を`report`方式で評価するだけならExifToolは不要です。
 
+## Linuxで始める
+
+Python **3.11以上**、Bash、venvが必要です。GUIはWindowsと同じTkinterの画面です。
+Ubuntu／Debianでシステム標準Pythonを使う場合の依存導入例：
+
+```bash
+sudo apt update
+sudo apt install python3 python3-venv python3-tk libimage-exiftool-perl fonts-noto-cjk xdg-utils
+```
+
+Python 3.11を別途導入する場合は、そのPythonのvenv・Tkinterパッケージも導入してください。
+Fedoraでは`python3-tkinter`と`perl-Image-ExifTool`等、ディストリビューションに合ったパッケージを使用します。
+セットアップスクリプトはシステムパッケージの導入やsudo実行を自動では行いません。
+
+```bash
+# CPU版の専用AI＋RAW
+./install.sh
+./start.sh
+
+# 軽量解析・API用：PyTorchなし
+./install.sh --minimal
+
+# CUDA版
+./install.sh --device cuda
+
+# 独自ONNXをCPUで利用
+./install.sh --minimal --onnx cpu
+
+# 設定済みフォルダをCLIで監視（Ctrl+Cで停止）
+./watch.sh
+```
+
+ZIP展開等で実行権限がない場合は`chmod +x install.sh start.sh watch.sh`、または`bash install.sh`で起動できます。
+設定画面を表示するにはデスクトップのDISPLAY／Wayland-XWayland環境が必要です。
+SSHのみの環境ではCLIを使用します。CLIはTkinter・GUIディスプレイを必要としません。
+LinuxではDirectMLを使用せず、CPUまたはCUDAを選択します。
+状態の既定保存先は`~/.local/share/PhotoSortAI`、設定はリポジトリの`config.json`です。
+自動起動が必要な場合は、設定後の`watch.sh`をデスクトップの自動起動やユーザーサービスから実行できます。
+
 ## 評価方式
 
 | プリセット | 処理 | 特徴 |
@@ -65,6 +106,7 @@ JPEG/PNG等を`report`方式で評価するだけならExifToolは不要です�
 | `technical` | BRISQUE＋NIQE | pyiqa。小さいほどよい指標を反転して合算 |
 | `custom` | NRモデルの任意の組み合わせ | JSONで正規化範囲・重みを指定 |
 | `ollama` | ローカル画像AIへ文章で指示 | Ollamaを別途導入。CPUでは専用モデルより遅い場合があります |
+| `openai` | OpenAI／OpenAI互換の画像対応API | URL・モデル・Chat Completions／Responses・JSON方式等を設定可能 |
 | `onnx` | 自分で用意したONNX評価モデル | CPU／DirectML／CUDA。対応ランタイムが必要 |
 
 専用AIの正規化境界は仮の値です。データセットや被写体で採点は偏ります。
@@ -127,6 +169,7 @@ rawpy非対応の圧縮RAW等は、ExifToolのプレビューや同名JPEG方式
 
 結果の既定保存先は`%LOCALAPPDATA%\PhotoSortAI`。
 `results.sqlite3`、`app.log`、`benchmark.json`、`backups/`を作ります。写真や結果をGitHubへ送信しません。
+API方式は指定先へ評価用JPEGとプロンプトを送信し、RAWファイル・ファイル名・EXIFはリクエストに含めません。
 
 ### サインイン時の自動監視
 
@@ -145,7 +188,7 @@ GUIから監視を重ねて開始した場合は二重処理を防ぐエラー�
 
 ## コマンドライン
 
-Windowsでセットアップ済みの例。Linuxでは`pip install -e '.[ai,raw]'`とExifToolを導入し、`python -m photo_sort_ai ...`を使います。
+Windowsでセットアップ済みの例。Linuxでは`.venv/bin/python -m photo_sort_ai ...`で同じサブコマンドを使えます。
 GUIにはTkinterとデスクトップ環境が必要です。
 
 ```powershell
@@ -219,6 +262,53 @@ APIは**ループバックHTTPだけ**に限定し、プロキシ・リダイレ
 rating(整数1〜5)とreasonを検査し、不正な返答を保存しません。
 0〜100点は星からの変換表示で、専用モデルの連続スコアとは比較できません。
 
+### OpenAI／OpenAI互換API
+
+追加SDKは不要です。Windowsは`install.ps1 -Minimal`、Linuxは`./install.sh --minimal`でも利用できます。
+GUIの評価方法を「OpenAI互換API」に変更し、「API設定」タブで次を設定してから保存・実行してください。
+
+| 設定 | 内容 |
+|---|---|
+| API URL | 既定は`https://api.openai.com/v1`。任意のベースURL、または`/chat/completions`／`/responses`で終わる完全URL |
+| API方式 | `chat_completions`または`responses`。指定先が対応する方式を選ぶ |
+| モデル | 指定先で利用できる**画像対応モデルの実際のID**。初期値は空欄 |
+| JSON方式 | `json_object`、厳密スキーマの`json_schema`、形式指定を省略する`none` |
+| APIキー | 環境変数名を設定。既定は`OPENAI_API_KEY`。GUIで起動中だけ有効なキーを入力することも可能 |
+| 画像詳細 | `auto`／`low`／`high`／`omit`。対応しない互換サーバーでは`omit` |
+| 出力トークン上限 | 既定2048。Chatでは`max_completion_tokens`、Responsesでは`max_output_tokens`。0で省略 |
+| store指定 | 既定false。互換サーバーで未対応なら`omit`。この指定の扱いはサービスに依存 |
+| 追加パラメータ | JSON設定の`openai_extra_body`、またはGUI。temperature・reasoning_effort等を指定先に合わせて設定 |
+
+URLへの認証情報・クエリ・フラグメントの埋め込みには対応しません。認証はBearerヘッダーです。
+APIキーそのものは設定JSON・結果・ログへ保存しません。GUI入力はそのプロセスの環境変数へ設定し、再起動後は再入力が必要です。
+キー不要のローカル互換APIは環境変数名を空欄にできます。変数名を指定してキーが未設定なら、送信前にエラーにします。
+
+```powershell
+# Windows：このPowerShellから起動するアプリだけにキーを渡す
+$env:OPENAI_API_KEY = "自分のAPIキー"
+.\start.bat
+```
+
+```bash
+# Linux：このターミナルから起動するアプリへキーを渡す
+export OPENAI_API_KEY='自分のAPIキー'
+./start.sh
+```
+
+[OpenAI公式用の設定例](examples/openai-api.json)と[ローカル互換API用の設定例](examples/openai-compatible-local.json)があります。
+モデルID・写真フォルダ・URLを自分の環境に合わせて変更してください。
+古い互換サーバーが`max_tokens`だけに対応する場合は、出力上限を0にし追加パラメータで`{"max_tokens":512}`を指定できます。
+未対応パラメータでエラーになった場合、別形式への自動再送はせず設定変更後に再試行します。
+
+返答はrating(整数1〜5)とreasonを検査し、不正値・拒否・途中終了を保存しません。
+HTTPエラーは状態コードを記録し、既存の監視の再試行設定に従います。リダイレクトは追従しません。
+API方式でも一括・監視・DNG保存・キャッシュ再利用を同じように使えます。
+モデル・URL・プロンプト等の変更は再評価を引き起こし、キーの変更だけでは再評価しません。
+APIのベンチマークは実際に指定先へ写真を送信して評価します。`prepare-models`は設定とキー取得の確認だけでAPI呼び出しを行いません。
+返答のusageを結果details・CSVへ保存します。0〜100点は星からの変換値です。
+
+公式仕様：[画像入力](https://developers.openai.com/api/docs/guides/images-vision) / [構造化出力](https://developers.openai.com/api/docs/guides/structured-outputs)
+
 ### ONNX
 
 `pip install '.[onnx]'`（CPU）、`pip install '.[directml]'`（DirectML）、`pip install '.[onnx-cuda]'`（CUDA）のいずれか一つを導入します。
@@ -235,7 +325,8 @@ python -m unittest discover -s tests -v
 python -m compileall -q src
 ```
 
-GitHub ActionsでWindows／Ubuntuの基本テスト、ExifToolのXMP・画素保持、WindowsのGUI起動・PowerShell構文を確認します。
+GitHub ActionsでWindows／Ubuntuの基本テスト、ExifToolのXMP・画素保持、両OSのGUI起動・軽量セットアップとスクリプト構文を確認します。
+APIテストはローカルの模擬HTTPサーバーを使用し、外部APIへの送信は行いません。
 実モデルの取得・CPU実行は`Optional CPU model smoke`ワークフローを手動実行できます。
 同ワークフローでは、テスト用ONNXのNCHW/NHWC入力と実際のCPU推論も確認します。
 また、合成したCFAセンサーDNGのLibRaw読み込み・RAW現像・星書き込み後のRAW画素保持を確認します。
