@@ -1,0 +1,12 @@
+{
+  "folders": ["D:/Photos"],
+  "preset": "custom",
+  "backend": "pyiqa",
+  "device": "cpu",
+  "metrics": [
+    {"name": "topiq_nr", "minimum": 0, "maximum": 1, "weight": 0.6},
+    {"name": "nima", "minimum": 3, "maximum": 7, "weight": 0.4}
+  ],
+  "thresholds": [25, 45, 65, 85],
+  "output": "report"
+}

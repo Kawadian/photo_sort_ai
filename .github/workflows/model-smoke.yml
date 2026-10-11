@@ -1,0 +1,45 @@
+name: Optional CPU model smoke
+on:
+  workflow_dispatch:
+    inputs:
+      preset:
+        type: choice
+        description: Model preset to download and run
+        default: balanced
+        options: [quality, aesthetic, balanced, topiq, clip, laion, technical]
+permissions:
+  contents: read
+jobs:
+  model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pip install -e '.[ai]'
+      - name: Evaluate a generated test image
+        env:
+          PRESET: ${{ inputs.preset }}
+        run: python tests/model_smoke.py
+  onnx:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[onnx]' onnx
+      - run: python tests/onnx_smoke.py
+  raw:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl
+      - run: python -m pip install -e '.[raw]' tifffile
+      - run: python tests/raw_smoke.py

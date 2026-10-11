@@ -1,0 +1,13 @@
+{
+  "folders": ["D:/Photos"],
+  "preset": "onnx",
+  "onnx_path": "../models/quality.onnx",
+  "onnx_provider": "DmlExecutionProvider",
+  "onnx_size": 224,
+  "onnx_layout": "NCHW",
+  "onnx_mean": [0.485, 0.456, 0.406],
+  "onnx_std": [0.229, 0.224, 0.225],
+  "onnx_minimum": 0,
+  "onnx_maximum": 1,
+  "output": "report"
+}

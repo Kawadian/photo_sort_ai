@@ -1,0 +1,11 @@
+{
+  "folders": ["D:/Photos"],
+  "preset": "ollama",
+  "device": "cpu",
+  "cpu_threads": 4,
+  "ollama_url": "http://127.0.0.1:11434",
+  "ollama_model": "qwen3-vl:4b",
+  "ollama_timeout": 300,
+  "max_side": 768,
+  "output": "report"
+}

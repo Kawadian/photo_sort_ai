@@ -1,0 +1,12 @@
+{
+  "folders": ["D:/Photos"],
+  "preset": "openai",
+  "openai_base_url": "https://api.openai.com/v1",
+  "openai_api_mode": "responses",
+  "openai_model": "YOUR_VISION_MODEL_ID",
+  "openai_api_key_env": "OPENAI_API_KEY",
+  "openai_response_format": "json_schema",
+  "openai_image_detail": "auto",
+  "openai_max_output_tokens": 2048,
+  "output": "report"
+}

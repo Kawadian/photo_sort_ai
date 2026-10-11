@@ -1,0 +1,14 @@
+{
+  "folders": ["./photos"],
+  "preset": "openai",
+  "openai_base_url": "http://127.0.0.1:1234/v1",
+  "openai_api_mode": "chat_completions",
+  "openai_model": "YOUR_LOCAL_VISION_MODEL_ID",
+  "openai_api_key_env": "",
+  "openai_response_format": "none",
+  "openai_image_detail": "omit",
+  "openai_store": null,
+  "openai_max_output_tokens": 0,
+  "openai_extra_body": {"max_tokens": 512, "temperature": 0},
+  "output": "report"
+}
