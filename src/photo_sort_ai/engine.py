@@ -7,6 +7,7 @@ import os
 import statistics
 import threading
 import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
 from .config import Config
@@ -16,6 +17,12 @@ from .scoring import create_scorer
 from .state import RunLock, Store
 
 logger = logging.getLogger(__name__)
+
+CONCURRENT_BACKENDS = {"openai", "ollama"}
+
+
+class Deferred(Exception):
+    """The file changed while it was being prepared; retry it on a later pass."""
 
 
 def lower_priority():
@@ -110,44 +117,139 @@ class Engine:
             self.observed[path] = (stamp, now)
         return now - self.observed[path][1] >= self.config.settle_seconds
 
+    def ensure_scorer(self):
+        if self.scorer is None:
+            self.emit("log", message=f"評価方式を準備: {self.config.preset} / {self.config.device}（初回はモデル取得が必要な場合があります）")
+            self.scorer = create_scorer(self.config)
+
+    def cached_result(self, path: Path, before: str, force: bool):
+        old = self.store.get(path)
+        if not force and old and old["stamp"] == before and old["signature"] == self.signature:
+            return json.loads(old["result"])
+        return None
+
+    def compute(self, path: Path, before: str) -> dict:
+        """Prepare and evaluate one photo. Touches no shared state, so workers may run it in parallel."""
+        prepared = self.preparer.prepare(path)
+        if self.stamp(path) != before:
+            raise Deferred("画像準備中にファイルが変更されました。")
+        evaluation = self.scorer.evaluate(prepared.image)
+        result = evaluation.to_dict()
+        result.update({"source": prepared.source, "size": list(prepared.image.size),
+                       "hash64": perceptual_hash(prepared.image),
+                       "pixels_sha256": hashlib.sha256(prepared.image.tobytes()).hexdigest()})
+        return result
+
+    def finish(self, path: Path, before: str, result: dict, start: float) -> bool:
+        """Write ratings and state. Always runs on the engine's own thread."""
+        if self.stop.is_set():
+            self.emit("deferred", path=str(path), reason="停止要求を受けたため書き込み前で中断しました。")
+            return False
+        if self.stamp(path) != before:
+            self.emit("deferred", path=str(path), reason="評価中にファイルが変更されました。")
+            return False
+        status = self.writer.apply(path, result["rating"])
+        result["seconds"] = round(time.perf_counter() - start, 4)
+        self.store.save(path, self.stamp(path), self.signature, self.output_signature, result, status)
+        self.observed.pop(path, None)
+        self.emit("result", path=str(path), status=status, **result)
+        self.stop.wait(self.config.delay_seconds)
+        return True
+
+    def failed(self, path: Path, before: str, error: Exception):
+        self.store.fail(path, before, self.signature + self.output_signature, str(error), self.config.retry_seconds)
+        self.emit("error", path=str(path), error=str(error))
+
     def process(self, path: Path, before: str, force: bool = False) -> bool:
         start = time.perf_counter()
         self.emit("processing", path=str(path))
         try:
-            old = self.store.get(path)
-            if not force and old and old["stamp"] == before and old["signature"] == self.signature:
-                result = json.loads(old["result"])
+            result = self.cached_result(path, before, force)
+            if result is not None:
                 self.emit("log", message="保存方法だけ変更されたため、評価結果を再利用します。")
             else:
-                prepared = self.preparer.prepare(path)
-                if self.stamp(path) != before:
-                    self.emit("deferred", path=str(path), reason="画像準備中にファイルが変更されました。")
+                self.ensure_scorer()
+                try:
+                    result = self.compute(path, before)
+                except Deferred as deferred:
+                    self.emit("deferred", path=str(path), reason=str(deferred))
                     return False
-                if self.scorer is None:
-                    self.emit("log", message=f"評価方式を準備: {self.config.preset} / {self.config.device}（初回はモデル取得が必要な場合があります）")
-                    self.scorer = create_scorer(self.config)
-                evaluation = self.scorer.evaluate(prepared.image)
-                result = evaluation.to_dict()
-                result.update({"source": prepared.source, "size": list(prepared.image.size),
-                               "hash64": perceptual_hash(prepared.image),
-                               "pixels_sha256": hashlib.sha256(prepared.image.tobytes()).hexdigest()})
-            if self.stop.is_set():
-                self.emit("deferred", path=str(path), reason="停止要求を受けたため書き込み前で中断しました。")
-                return False
-            if self.stamp(path) != before:
-                self.emit("deferred", path=str(path), reason="評価中にファイルが変更されました。")
-                return False
-            status = self.writer.apply(path, result["rating"])
-            result["seconds"] = round(time.perf_counter() - start, 4)
-            self.store.save(path, self.stamp(path), self.signature, self.output_signature, result, status)
-            self.observed.pop(path, None)
-            self.emit("result", path=str(path), status=status, **result)
-            self.stop.wait(self.config.delay_seconds)
-            return True
+            return self.finish(path, before, result, start)
         except Exception as error:
-            self.store.fail(path, before, self.signature + self.output_signature, str(error), self.config.retry_seconds)
-            self.emit("error", path=str(path), error=str(error))
+            self.failed(path, before, error)
             return False
+
+    def concurrency(self) -> int:
+        return self.config.api_concurrency if self.config.backend in CONCURRENT_BACKENDS else 1
+
+    def process_many(self, jobs: list[tuple[Path, str]], force: bool = False) -> tuple[int, int]:
+        """Evaluate jobs with up to api_concurrency requests in flight.
+
+        Workers only prepare images and call the API; cache lookups, metadata writes,
+        SQLite updates and events stay on this thread, so results match sequential runs.
+        """
+        workers = self.concurrency()
+        if workers <= 1 or len(jobs) <= 1:
+            ok = failed = 0
+            for path, stamp in jobs:
+                if self.stop.is_set():
+                    break
+                if self.process(path, stamp, force):
+                    ok += 1
+                else:
+                    failed += 1
+            return ok, failed
+        processed = errors = 0
+        queue = list(jobs)
+        running = {}
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="photo-api") as pool:
+            while queue or running:
+                while queue and len(running) < workers and not self.stop.is_set():
+                    path, before = queue.pop(0)
+                    start = time.perf_counter()
+                    self.emit("processing", path=str(path))
+                    try:
+                        result = self.cached_result(path, before, force)
+                        if result is not None:
+                            self.emit("log", message="保存方法だけ変更されたため、評価結果を再利用します。")
+                            if self.finish(path, before, result, start):
+                                processed += 1
+                            else:
+                                errors += 1
+                            continue
+                        self.ensure_scorer()
+                    except Exception as error:
+                        self.failed(path, before, error)
+                        errors += 1
+                        continue
+                    running[pool.submit(self.compute, path, before)] = (path, before, start)
+                if self.stop.is_set():
+                    errors += len(queue)
+                    queue.clear()
+                if not running:
+                    continue
+                done, _ = wait(running, return_when=FIRST_COMPLETED)
+                for future in done:
+                    path, before, start = running.pop(future)
+                    try:
+                        result = future.result()
+                    except Deferred as deferred:
+                        self.emit("deferred", path=str(path), reason=str(deferred))
+                        errors += 1
+                        continue
+                    except Exception as error:
+                        self.failed(path, before, error)
+                        errors += 1
+                        continue
+                    try:
+                        if self.finish(path, before, result, start):
+                            processed += 1
+                        else:
+                            errors += 1
+                    except Exception as error:
+                        self.failed(path, before, error)
+                        errors += 1
+        return processed, errors
 
     def scan(self, force: bool = False, limit: int | None = None) -> dict:
         candidates = self.discover()
@@ -160,7 +262,30 @@ class Engine:
                 self.ready(path, self.stamp(path))
             except OSError:
                 pending.discard(path)
-        while pending and not self.stop.is_set() and (limit is None or processed < limit):
+        while pending and not self.stop.is_set() and (limit is None or processed < limit) and self.concurrency() > 1:
+            jobs = []
+            for path in sorted(pending):
+                if self.stop.is_set() or (limit is not None and processed + len(jobs) >= limit):
+                    break
+                try:
+                    stamp = self.stamp(path)
+                    if not self.should_process(path, stamp, force):
+                        pending.remove(path)
+                    elif self.ready(path, stamp):
+                        jobs.append((path, stamp))
+                        pending.remove(path)
+                except OSError as error:
+                    self.emit("error", path=str(path), error=str(error))
+                    errors += 1
+                    pending.remove(path)
+            ok, failed = self.process_many(jobs, force)
+            processed += ok
+            errors += failed
+            if pending and time.monotonic() >= deadline:
+                break
+            if pending and not jobs:
+                self.stop.wait(min(1.0, self.config.poll_seconds))
+        while pending and not self.stop.is_set() and (limit is None or processed < limit) and self.concurrency() <= 1:
             for path in sorted(pending):
                 if self.stop.is_set() or (limit is not None and processed >= limit):
                     break
@@ -194,15 +319,21 @@ class Engine:
             candidates = self.discover()
             live = set(candidates)
             self.observed = {p: observation for p, observation in self.observed.items() if p in live}
+            jobs = []
             for path in candidates:
                 if self.stop.is_set():
                     break
                 try:
                     stamp = self.stamp(path)
                     if self.should_process(path, stamp, False) and self.ready(path, stamp):
-                        self.process(path, stamp)
+                        if self.concurrency() > 1:
+                            jobs.append((path, stamp))
+                        else:
+                            self.process(path, stamp)
                 except OSError as error:
                     self.emit("error", path=str(path), error=str(error))
+            if jobs:
+                self.process_many(jobs)
             self.stop.wait(self.config.poll_seconds)
 
     def benchmark(self, limit: int = 20) -> dict:

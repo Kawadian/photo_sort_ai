@@ -6,6 +6,8 @@ import http.client
 import io
 import json
 import os
+import threading
+import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlparse
@@ -33,6 +35,25 @@ STAR_CHOICES = {
 }
 
 
+RETRY_STATUSES = {429, 503}
+RATE_LIMIT_BASE_SECONDS = 2.0
+RATE_LIMIT_MAX_SECONDS = 120.0
+
+
+def retry_after_seconds(value: str | None, attempt: int) -> float:
+    """Seconds to wait before retrying: the server's Retry-After, else exponential backoff."""
+    if value:
+        try:
+            return min(RATE_LIMIT_MAX_SECONDS, max(0.0, float(value.strip())))
+        except ValueError:
+            from email.utils import parsedate_to_datetime
+            try:
+                return min(RATE_LIMIT_MAX_SECONDS, max(0.0, parsedate_to_datetime(value).timestamp() - time.time()))
+            except (TypeError, ValueError, OverflowError):
+                pass
+    return min(RATE_LIMIT_MAX_SECONDS, RATE_LIMIT_BASE_SECONDS * (2 ** attempt))
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise RuntimeError("APIのリダイレクトを拒否しました。転送先をAPI URLに直接設定してください。")
@@ -51,6 +72,9 @@ class OpenAICompatibleScorer:
         route = API_ROUTES[config.openai_api_mode]
         base = config.openai_base_url.rstrip("/")
         self.endpoint = base if base.endswith("/" + route) else base + "/" + route
+        # One scorer is shared by all workers: a 429 pauses every request, not just one.
+        self.cooldown_lock = threading.Lock()
+        self.cooldown_until = 0.0
         handlers = [NoRedirect()]
         if urlparse(base).hostname in {"127.0.0.1", "localhost", "::1"}:
             handlers.append(urllib.request.ProxyHandler({}))
@@ -157,22 +181,51 @@ class OpenAICompatibleScorer:
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
         if self.api_key:
             headers["Authorization"] = "Bearer " + self.api_key
-        req = urllib.request.Request(self.endpoint, json.dumps(self.payload(image), allow_nan=False).encode("utf-8"), headers)
-        try:
-            with self.opener.open(req, timeout=self.config.openai_timeout) as response:
-                raw = response.read(2_000_001)
-        except urllib.error.HTTPError as error:
-            code = error.code
-            error.close()
-            hint = {401: "APIキーを確認してください。", 403: "利用権限を確認してください。",
-                    400: "モデル・JSON方式・追加パラメータを確認してください。",
-                    404: "API URLとモデル名を確認してください。", 429: "待機後に再試行してください。"}.get(code, "APIサービスの状態を確認してください。")
-            # Never put a provider's raw error body (possibly echoing secrets) in logs.
-            raise RuntimeError(f"API HTTP {code}: {hint}") from None
-        except (OSError, http.client.HTTPException):
-            raise RuntimeError("APIへの接続に失敗しました。API URL・通信設定・待機時間を確認してください。") from None
+        body = json.dumps(self.payload(image), allow_nan=False).encode("utf-8")
+        raw = self.post(body, headers)
         if len(raw) > 2_000_000:
             raise ValueError("APIの返答が大きすぎます。")
+        return self.parse(raw)
+
+    def wait_for_cooldown(self):
+        while True:
+            with self.cooldown_lock:
+                remaining = self.cooldown_until - time.monotonic()
+            if remaining <= 0:
+                return
+            time.sleep(min(remaining, 1.0))
+
+    def post(self, body: bytes, headers: dict) -> bytes:
+        attempt = 0
+        while True:
+            self.wait_for_cooldown()
+            req = urllib.request.Request(self.endpoint, body, headers)
+            try:
+                with self.opener.open(req, timeout=self.config.openai_timeout) as response:
+                    return response.read(2_000_001)
+            except urllib.error.HTTPError as error:
+                code = error.code
+                retry_after = error.headers.get("Retry-After") if error.headers else None
+                error.close()
+                if code in RETRY_STATUSES and attempt < self.config.api_rate_limit_retries:
+                    delay = retry_after_seconds(retry_after, attempt)
+                    with self.cooldown_lock:
+                        self.cooldown_until = max(self.cooldown_until, time.monotonic() + delay)
+                    attempt += 1
+                    continue
+                self.http_error(code)
+            except (OSError, http.client.HTTPException):
+                raise RuntimeError("APIへの接続に失敗しました。API URL・通信設定・待機時間を確認してください。") from None
+
+    @staticmethod
+    def http_error(code: int):
+        hint = {401: "APIキーを確認してください。", 403: "利用権限を確認してください。",
+                400: "モデル・JSON方式・追加パラメータを確認してください。",
+                404: "API URLとモデル名を確認してください。", 429: "待機後に再試行してください。"}.get(code, "APIサービスの状態を確認してください。")
+        # Never put a provider's raw error body (possibly echoing secrets) in logs.
+        raise RuntimeError(f"API HTTP {code}: {hint}") from None
+
+    def parse(self, raw: bytes) -> Evaluation:
         data = json.loads(raw)
         if not isinstance(data, dict):
             raise ValueError("APIの返答がJSONオブジェクトではありません。")

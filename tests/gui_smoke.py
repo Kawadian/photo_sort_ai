@@ -33,6 +33,10 @@ with tempfile.TemporaryDirectory() as directory:
         saved = (Path(directory) / "config.json").read_text(encoding="utf-8")
         assert json.loads(saved)["openai_api_mode"] == mode
         assert "test-session-secret" not in saved
+    app.vars["api_concurrency"].set("4")
+    app.vars["api_rate_limit_retries"].set("3")
+    cfg = app.collect(require_folders=False)
+    assert (cfg.api_concurrency, cfg.api_rate_limit_retries) == (4, 3)
     os.environ.pop("PHOTO_SORT_GUI_TEST_KEY", None)
     app.close()
     root.after(500, root.quit)

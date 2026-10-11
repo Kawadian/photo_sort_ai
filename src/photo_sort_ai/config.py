@@ -92,6 +92,10 @@ class Config:
     openai_max_output_tokens: int = 2048
     openai_store: bool | None = False
     openai_extra_body: dict = field(default_factory=dict)
+    # Parallel requests for HTTP backends (openai / ollama). 1 keeps the sequential behavior.
+    api_concurrency: int = 1
+    # Extra attempts after HTTP 429/503 (honoring Retry-After), shared across workers.
+    api_rate_limit_retries: int = 2
     onnx_path: str = ""
     onnx_provider: str = "CPUExecutionProvider"
     onnx_size: int = 224
@@ -150,6 +154,10 @@ class Config:
                     raise ValueError("モデル設定には有限の値が必要です。")
                 if m.minimum >= m.maximum or m.weight <= 0:
                     raise ValueError("モデルのminimum < maximum、weight > 0が必要です。")
+        if type(self.api_concurrency) is not int or not 1 <= self.api_concurrency <= 16:
+            raise ValueError("api_concurrencyは1〜16の整数にしてください。")
+        if type(self.api_rate_limit_retries) is not int or not 0 <= self.api_rate_limit_retries <= 10:
+            raise ValueError("api_rate_limit_retriesは0〜10の整数にしてください。")
         if self.onnx_size < 32 or len(self.onnx_mean) != 3 or len(self.onnx_std) != 3 or min(self.onnx_std) <= 0:
             raise ValueError("ONNXの画像サイズ・RGB正規化設定が不正です。")
         if self.onnx_minimum >= self.onnx_maximum or self.ollama_timeout <= 0:
