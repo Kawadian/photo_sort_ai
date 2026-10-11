@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -57,9 +58,17 @@ class ExifTool:
 
     def run(self, *args: str) -> bytes:
         flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+        command, argument_input = [self.executable, *args], None
+        if os.name == "nt":
+            # Windows EXE command-line decoding can lose Japanese filenames.
+            # ExifTool's UTF-8 argument file on stdin avoids the ANSI code page.
+            if any("\n" in arg or "\r" in arg for arg in args):
+                raise ValueError("ExifToolの引数に改行は使用できません。")
+            command = [self.executable, "-charset", "filename=UTF8", "-@", "-"]
+            argument_input = ("\n".join(args) + "\n").encode("utf-8")
         try:
-            proc = subprocess.run([self.executable, *args], stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE, timeout=120, creationflags=flags)
+            proc = subprocess.run(command, input=argument_input, capture_output=True,
+                                  check=False, timeout=120, creationflags=flags)
         except FileNotFoundError as error:
             raise RuntimeError("ExifToolがありません。インストールするかexiftool_pathにexeの場所を設定してください。") from error
         if proc.returncode:

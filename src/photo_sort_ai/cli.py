@@ -74,6 +74,7 @@ def main(argv=None) -> int:
     if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="backslashreplace")
     args = parser().parse_args(argv)
+    log_handler = None
     try:
         if args.command == "init":
             if args.config.exists() and not args.overwrite:
@@ -98,8 +99,10 @@ def main(argv=None) -> int:
             return 0
         state_dir = Path(cfg.state_dir)
         state_dir.mkdir(parents=True, exist_ok=True)
-        logging.basicConfig(filename=state_dir / "app.log", level=logging.INFO,
-                            format="%(asctime)s %(levelname)s %(message)s", encoding="utf-8")
+        log_handler = logging.FileHandler(state_dir / "app.log", encoding="utf-8")
+        log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        logging.getLogger().setLevel(logging.INFO)
+        logging.getLogger().addHandler(log_handler)
         if args.command == "prepare-models":
             create_scorer(cfg)
             output({"status": "ready", "preset": cfg.preset,
@@ -154,3 +157,7 @@ def main(argv=None) -> int:
         logging.exception("処理に失敗しました")
         output({"kind": "fatal", "error": str(error)})
         return 1
+    finally:
+        if log_handler is not None:
+            logging.getLogger().removeHandler(log_handler)
+            log_handler.close()

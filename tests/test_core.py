@@ -37,7 +37,7 @@ class TempCase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.photos = self.root / "photos"
         self.photos.mkdir()
         self.cfg = Config(folders=[str(self.photos)], state_dir=str(self.root / "state"),
@@ -58,7 +58,7 @@ class ConfigTests(TempCase):
         save_config(self.cfg, path)
         loaded = load_config(path)
         self.assertEqual(loaded.analysis_signature(), self.cfg.analysis_signature())
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         data["preset"] = "topiq"
         path.write_text(json.dumps(data))
         loaded = load_config(path)
