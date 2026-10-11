@@ -43,7 +43,8 @@ PRESETS: dict[str, tuple[str, list[Metric]]] = {
 
 
 def default_state_dir() -> Path:
-    root = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".local" / "share")))
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    root = Path(local_app_data) if local_app_data else Path.home() / ".local" / "share"
     return root / "PhotoSortAI"
 
 

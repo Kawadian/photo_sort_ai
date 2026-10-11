@@ -151,7 +151,7 @@ class OpenAIAPITests(unittest.TestCase):
                 self.assertEqual(foreign_records, [])
 
     def test_missing_key_is_reported_before_network(self):
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {"PHOTO_SORT_MISSING_KEY": ""}):
             cfg = self.cfg("https://api.openai.com/v1")
             cfg.openai_api_key_env = "PHOTO_SORT_MISSING_KEY"
             with self.assertRaisesRegex(RuntimeError, "PHOTO_SORT_MISSING_KEY"):

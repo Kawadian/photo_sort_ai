@@ -14,7 +14,13 @@ import numpy as np
 from PIL import Image, ImageFilter, TiffImagePlugin
 
 from photo_sort_ai.cli import main
-from photo_sort_ai.config import Config, Metric, load_config, save_config
+from photo_sort_ai.config import (
+    Config,
+    Metric,
+    default_state_dir,
+    load_config,
+    save_config,
+)
 from photo_sort_ai.engine import Engine
 from photo_sort_ai.images import ImagePreparer, orient
 from photo_sort_ai.metadata import (
@@ -52,6 +58,10 @@ class TempCase(unittest.TestCase):
 
 
 class ConfigTests(TempCase):
+    def test_windows_state_directory_does_not_require_home_lookup(self):
+        with patch.dict(os.environ, {"LOCALAPPDATA": str(self.root)}), patch("photo_sort_ai.config.Path.home", side_effect=RuntimeError("no home")):
+            self.assertEqual(default_state_dir(), self.root / "PhotoSortAI")
+
     def test_roundtrip_and_preset_canonicalization(self):
         self.cfg.use_preset("balanced")
         path = self.root / "config.json"
