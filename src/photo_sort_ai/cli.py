@@ -41,7 +41,7 @@ def parser() -> argparse.ArgumentParser:
         s.add_argument("--output", choices=["embedded", "sidecar", "report"])
         s.add_argument("--api-url", help="OpenAI互換APIのベースURLまたは完全URL")
         s.add_argument("--api-model", help="OpenAI互換APIの画像対応モデルID")
-        s.add_argument("--api-mode", choices=["chat_completions", "responses"])
+        s.add_argument("--api-mode", choices=["chat_completions", "responses", "decisions", "openrouter_decisions"])
         s.add_argument("--api-key-env", help="APIキーの環境変数名。匿名APIは空文字")
         s.add_argument("--api-json-mode", choices=["json_schema", "json_object", "none"])
         s.add_argument("--retry-errors", action="store_true")

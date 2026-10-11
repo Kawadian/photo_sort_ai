@@ -22,6 +22,16 @@ RATING_SCHEMA = {
     "required": ["rating", "reason"], "additionalProperties": False,
 }
 
+API_ROUTES = {"chat_completions": "chat/completions", "responses": "responses",
+              "decisions": "decisions", "openrouter_decisions": "decisions"}
+STAR_CHOICES = {
+    "1": "大きな撮影失敗があり、選別で外す候補。",
+    "2": "目立つ欠点があり、残す優先度が低い。",
+    "3": "通常の記録写真として残せる。",
+    "4": "画質・構図・被写体の捉え方がよく、積極的に残したい。",
+    "5": "画質・構図・表現に優れ、代表作として残したい。",
+}
+
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -38,7 +48,7 @@ class OpenAICompatibleScorer:
             raise RuntimeError(f"APIキーを環境変数 {variable} またはGUIの起動中のみの入力欄に設定してください。")
         if any(ord(c) < 32 or ord(c) > 126 for c in self.api_key):
             raise ValueError("APIキーに使用できない文字が含まれています。")
-        route = "chat/completions" if config.openai_api_mode == "chat_completions" else "responses"
+        route = API_ROUTES[config.openai_api_mode]
         base = config.openai_base_url.rstrip("/")
         self.endpoint = base if base.endswith("/" + route) else base + "/" + route
         handlers = [NoRedirect()]
@@ -51,6 +61,27 @@ class OpenAICompatibleScorer:
         jpeg = io.BytesIO()
         image.convert("RGB").save(jpeg, format="JPEG", quality=90, exif=b"")
         image_url = "data:image/jpeg;base64," + base64.b64encode(jpeg.getvalue()).decode("ascii")
+        if cfg.openai_api_mode in {"decisions", "openrouter_decisions"}:
+            # Decisions returns a typed answer, not generated rating/reason text.
+            instructions = cfg.openai_prompt + "\n採点はratingの選択肢で回答してください。文章やJSONの生成指示は適用しません。"
+            question = {"type": "choice", "instructions": instructions}
+            if cfg.openai_api_mode == "openrouter_decisions":
+                part = {"url": image_url}
+                if cfg.openai_image_detail != "omit":
+                    part["detail"] = cfg.openai_image_detail
+                payload = {"model": cfg.openai_model,
+                           "state": [instructions, {"type": "image_url", "image_url": part}],
+                           "questions": {"rating": {**question, "criteria": STAR_CHOICES}}}
+            else:
+                payload = {"model": cfg.openai_model,
+                           "input": [{"role": "user", "content": [
+                               {"type": "input_text", "text": instructions},
+                               {"type": "input_image", "image_url": image_url}]}],
+                           "questions": [{**question, "name": "rating", "choices": [
+                               {"value": value, "description": description}
+                               for value, description in STAR_CHOICES.items()]}]}
+            payload.update(cfg.openai_extra_body)
+            return payload
         prompt = cfg.openai_prompt + '\nJSONオブジェクトのみを返してください。例: {"rating":3,"reason":"短い評価理由"}'
         payload = {"model": cfg.openai_model, "stream": False}
         if cfg.openai_store is not None:
@@ -145,6 +176,8 @@ class OpenAICompatibleScorer:
         data = json.loads(raw)
         if not isinstance(data, dict):
             raise ValueError("APIの返答がJSONオブジェクトではありません。")
+        if self.config.openai_api_mode in {"decisions", "openrouter_decisions"}:
+            return self.decision_evaluation(data)
         answer = json.loads(self.response_text(data))
         if not isinstance(answer, dict):
             raise ValueError("APIの評価がJSONオブジェクトではありません。")
@@ -155,3 +188,27 @@ class OpenAICompatibleScorer:
                           {"backend": "openai", "model": self.config.openai_model,
                            "api_mode": self.config.openai_api_mode, "endpoint": self.endpoint,
                            "usage": data.get("usage"), "score_is_star_conversion": True})
+
+    def decision_evaluation(self, data: dict) -> Evaluation:
+        if data.get("error") or data.get("status") not in {None, "completed"}:
+            raise ValueError("Decisions APIがエラーまたは未完了の返答を返しました。")
+        answers = data.get("answers")
+        if self.config.openai_api_mode == "openrouter_decisions":
+            answer = answers.get("rating") if isinstance(answers, dict) else None
+        else:
+            matches = [item for item in answers if isinstance(item, dict) and item.get("name") == "rating"] if isinstance(answers, list) else []
+            answer = matches[0] if len(matches) == 1 else None
+        if not isinstance(answer, dict) or answer.get("type") != "choice":
+            raise ValueError("Decisions APIに有効なratingの選択結果がありません（拒否を含む）。")
+        choice = answer.get("choice")
+        if not isinstance(choice, str) or choice not in STAR_CHOICES:
+            raise ValueError("Decisions APIの選択結果が星1〜5ではありません。")
+        # Reject non-finite numbers before persisting provider results to SQLite/CSV.
+        json.dumps(answer, allow_nan=False)
+        rating = int(choice)
+        return Evaluation((rating - 1) * 25.0, rating,
+                          f"Decisionsの選択結果: 星{rating}（文章の評価理由は生成しません）",
+                          {"backend": "openai", "model": self.config.openai_model,
+                           "api_mode": self.config.openai_api_mode, "endpoint": self.endpoint,
+                           "usage": data.get("usage"), "decision": answer,
+                           "score_is_star_conversion": True})

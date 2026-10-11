@@ -58,6 +58,76 @@ class OpenAIAPITests(unittest.TestCase):
     def image(self):
         return Image.new("RGB", (160, 100), (90, 150, 110))
 
+    def test_openrouter_decisions_typed_output_and_no_chat_parameters(self):
+        answer = {"type": "choice", "choice": "4",
+                  "probabilities": {"1": 0.01, "2": 0.04, "3": 0.1, "4": 0.8, "5": 0.05},
+                  "confidence": 0.7}
+        with server({"answers": {"rating": answer}, "usage": {"input_tokens": 456}}) as (base, records):
+            cfg = self.cfg(base + "/api/alpha/decisions", openai_api_mode="openrouter_decisions")
+            cfg.openai_model = "openai/gpt-6-luna-decisions"
+            result = create_scorer(cfg).evaluate(self.image())
+            body = records[0]["body"]
+            self.assertEqual(records[0]["path"], "/api/alpha/decisions")
+            self.assertEqual(set(body), {"model", "state", "questions"})
+            self.assertTrue(body["state"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,"))
+            self.assertEqual(set(body["questions"]["rating"]["criteria"]), {"1", "2", "3", "4", "5"})
+            self.assertEqual(result.rating, 4)
+            self.assertEqual(result.details["decision"], answer)
+            self.assertEqual(result.details["usage"]["input_tokens"], 456)
+
+    def test_openai_decisions_request_and_named_answer(self):
+        answer = {"type": "choice", "name": "rating", "choice": "5", "confidence": 0.9,
+                  "probabilities": [{"value": "5", "probability": 0.95}]}
+        with server({"answers": [{"name": "unrelated", "type": "predicate"}, answer]}) as (base, records):
+            cfg = self.cfg(base + "/v1", openai_api_mode="decisions")
+            cfg.openai_model = "gpt-6-luna"
+            result = create_scorer(cfg).evaluate(self.image())
+            self.assertEqual(records[0]["path"], "/v1/decisions")
+            body = records[0]["body"]
+            self.assertEqual(set(body), {"model", "input", "questions"})
+            self.assertEqual(body["input"][0]["content"][1]["type"], "input_image")
+            self.assertEqual(body["questions"][0]["name"], "rating")
+            self.assertEqual(len(body["questions"][0]["choices"]), 5)
+            self.assertEqual(result.rating, 5)
+
+    def test_decisions_invalid_refused_and_incomplete_answers_are_not_used(self):
+        invalid = [{}, {"type": "refusal"}, {"type": "choice", "choice": "6"},
+                   {"type": "choice", "choice": 4}, {"type": "choice", "choice": "4", "confidence": float("nan")}]
+        for mode in ["decisions", "openrouter_decisions"]:
+            for answer in invalid:
+                answers = {"rating": answer} if mode == "openrouter_decisions" else [{"name": "rating", **answer}]
+                with self.subTest(mode=mode, answer=answer), server({"answers": answers}) as (base, _):
+                    with self.assertRaises(ValueError):
+                        create_scorer(self.cfg(base, openai_api_mode=mode)).evaluate(self.image())
+            with server({"status": "incomplete", "answers": {}}) as (base, _):
+                with self.assertRaises(ValueError):
+                    create_scorer(self.cfg(base, openai_api_mode=mode)).evaluate(self.image())
+
+    def test_decisions_engine_star_write_and_cached_second_scan(self):
+        reply = {"answers": {"rating": {"type": "choice", "choice": "3", "confidence": 0.6}}}
+        with tempfile.TemporaryDirectory() as directory, server(reply) as (base, records):
+            root = Path(directory).resolve()
+            image = root / "写真.png"
+            self.image().save(image)
+            cfg = self.cfg(base, openai_api_mode="openrouter_decisions", folders=[str(root)],
+                           state_dir=str(root / "state"), output="sidecar", settle_seconds=0, low_priority=False)
+            with Engine(cfg) as engine:
+                self.assertEqual(engine.scan()["processed"], 1)
+                self.assertEqual(engine.scan()["processed"], 0)
+            self.assertEqual(len(records), 1)
+            self.assertEqual(read_sidecar_rating(sidecar_path(image)), 3)
+
+    def test_decisions_url_mode_validation_and_reserved_inputs(self):
+        for mode in ["decisions", "openrouter_decisions"]:
+            for url in ["http://host/v1", "http://host/api/alpha/decisions"]:
+                self.cfg(url, openai_api_mode=mode).validate(require_folders=False)
+            with self.assertRaises(ValueError):
+                self.cfg("http://host/responses", openai_api_mode=mode).validate(require_folders=False)
+            for field in ["state", "questions"]:
+                with self.assertRaises(ValueError):
+                    self.cfg("http://host/v1", openai_api_mode=mode,
+                             openai_extra_body={field: {}}).validate(require_folders=False)
+
     def test_chat_real_http_path_auth_image_and_usage(self):
         with server() as (base, records), patch.dict(os.environ, {"PHOTO_SORT_TEST_KEY": "test-token"}):
             cfg = self.cfg(base + "/proxy/v1", openai_image_detail="low")

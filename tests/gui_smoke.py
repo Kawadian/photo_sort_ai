@@ -26,6 +26,13 @@ with tempfile.TemporaryDirectory() as directory:
     saved = (Path(directory) / "config.json").read_text(encoding="utf-8")
     assert "test-session-secret" not in saved
     assert json.loads(saved)["openai_api_mode"] == "chat_completions"
+    for mode in ["decisions", "openrouter_decisions"]:
+        app.vars["openai_api_mode"].set(mode)
+        cfg = app.collect(require_folders=False)
+        save_config(cfg, Path(directory) / "config.json")
+        saved = (Path(directory) / "config.json").read_text(encoding="utf-8")
+        assert json.loads(saved)["openai_api_mode"] == mode
+        assert "test-session-secret" not in saved
     os.environ.pop("PHOTO_SORT_GUI_TEST_KEY", None)
     app.close()
     root.after(500, root.quit)

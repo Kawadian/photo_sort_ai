@@ -171,8 +171,10 @@ class Config:
     def validate_openai(self) -> None:
         import re
         from urllib.parse import urlparse
-        if self.openai_api_mode not in {"chat_completions", "responses"}:
-            raise ValueError("openai_api_modeはchat_completions / responsesです。")
+        routes = {"chat_completions": "chat/completions", "responses": "responses",
+                  "decisions": "decisions", "openrouter_decisions": "decisions"}
+        if self.openai_api_mode not in routes:
+            raise ValueError("openai_api_modeはchat_completions / responses / decisions / openrouter_decisionsです。")
         url = urlparse(self.openai_base_url)
         if (url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password
                 or "?" in self.openai_base_url or "#" in self.openai_base_url
@@ -182,9 +184,9 @@ class Config:
             url.port
         except ValueError as error:
             raise ValueError("API URLのポート番号が不正です。") from error
-        endpoint = "chat/completions" if self.openai_api_mode == "chat_completions" else "responses"
+        endpoint = routes[self.openai_api_mode]
         path = url.path.rstrip("/")
-        if any(path.endswith("/" + other) for other in ["chat/completions", "responses"] if other != endpoint):
+        if any(path.endswith("/" + other) for other in set(routes.values()) if other != endpoint):
             raise ValueError("API URLとAPI方式が一致しません。")
         if not self.openai_model.strip() or not self.openai_prompt.strip():
             raise ValueError("APIモデル名と評価プロンプトを指定してください。")
@@ -202,7 +204,7 @@ class Config:
             raise ValueError("openai_storeはtrue / false / nullです。")
         if not isinstance(self.openai_extra_body, dict):
             raise ValueError("openai_extra_bodyはJSONオブジェクトにしてください。")
-        if set(self.openai_extra_body) & {"model", "messages", "input", "stream", "store", "response_format", "text"}:
+        if set(self.openai_extra_body) & {"model", "messages", "input", "state", "questions", "stream", "store", "response_format", "text"}:
             raise ValueError("API追加パラメータでモデル・画像入力・JSON形式等の主要設定は上書きできません。")
         json.dumps(self.openai_extra_body, allow_nan=False)
 

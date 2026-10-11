@@ -270,8 +270,8 @@ GUIの評価方法を「OpenAI互換API」に変更し、「API設定」タブ�
 
 | 設定 | 内容 |
 |---|---|
-| API URL | 既定は`https://api.openai.com/v1`。任意のベースURL、または`/chat/completions`／`/responses`で終わる完全URL |
-| API方式 | `chat_completions`または`responses`。指定先が対応する方式を選ぶ |
+| API URL | 既定は`https://api.openai.com/v1`。任意のベースURL、または`/chat/completions`／`/responses`／`/decisions`で終わる完全URL |
+| API方式 | `chat_completions`／`responses`／`decisions`（OpenAI形式）／`openrouter_decisions`（OpenRouter形式）。指定先が対応する方式を明示的に選ぶ |
 | モデル | 指定先で利用できる**画像対応モデルの実際のID**。初期値は空欄 |
 | JSON方式 | `json_object`、厳密スキーマの`json_schema`、形式指定を省略する`none` |
 | APIキー | 環境変数名を設定。既定は`OPENAI_API_KEY`。GUIで起動中だけ有効なキーを入力することも可能 |
@@ -310,7 +310,7 @@ Windowsでも同じオプションを使えます。`--api-key-env`は環境変�
 古い互換サーバーが`max_tokens`だけに対応する場合は、出力上限を0にし追加パラメータで`{"max_tokens":512}`を指定できます。
 未対応パラメータでエラーになった場合、別形式への自動再送はせず設定変更後に再試行します。
 
-返答はrating(整数1〜5)とreasonを検査し、不正値・拒否・途中終了を保存しません。
+Chat／Responsesの返答はrating(整数1〜5)とreasonを検査し、不正値・拒否・途中終了を保存しません。
 HTTPエラーは状態コードを記録し、既存の監視の再試行設定に従います。リダイレクトは追従しません。
 API方式でも一括・監視・DNG保存・キャッシュ再利用を同じように使えます。
 モデル・URL・プロンプト等の変更は再評価を引き起こし、キーの変更だけでは再評価しません。
@@ -318,6 +318,27 @@ APIのベンチマークは実際に指定先へ写真を送信して評価し�
 返答のusageを結果details・CSVへ保存します。0〜100点は星からの変換値です。
 
 公式仕様：[画像入力](https://developers.openai.com/api/docs/guides/images-vision) / [構造化出力](https://developers.openai.com/api/docs/guides/structured-outputs)
+
+#### Decisions API
+
+モデル名だけを変更しても、Decisionsの返答はChat／Responsesでは読み取れません。
+カスタムエンドポイントではモデル情報を取得できない場合もあるため、自動判別せずGUIの「API方式」またはCLIの`--api-mode`で切り替えます。
+モデル固有の分岐はなく、指定した形式と画像入力に対応するDecisionsモデルを利用できます。
+
+| 接続先 | API URL | API方式 | モデル例 |
+|---|---|---|---|
+| OpenRouter | `https://openrouter.ai/api/alpha/decisions` | `openrouter_decisions` | `openai/gpt-6-luna-decisions` |
+| OpenAI | `https://api.openai.com/v1` | `decisions` | `gpt-6-luna` |
+
+[OpenRouter Decisions設定例](examples/openrouter-decisions.json)を利用できます。APIキーの環境変数名は`OPENROUTER_API_KEY`です。
+LinuxでもWindowsでも、GUIの同じAPI設定から利用できます。
+
+Decisionsでは5つの星を選択肢として送信し、`answers`の`rating`に返った`choice`（1〜5）を星に保存します。
+自由な文章の理由は生成しません。返った選択結果・確率分布・confidenceは結果details／CSVの`decision`に保存します。
+JSON方式・出力トークン上限・store設定はDecisionsには送信しません。画像詳細はOpenRouter形式のみ送信します。
+この方式でも一括評価・監視・DNG保存・キャッシュを利用でき、不正な選択・拒否・未完了は保存しません。
+
+仕様参照：[OpenAI Decisions](https://developers.openai.com/api/docs/guides/decisions) / [OpenRouter画像入力](https://openrouter.ai/docs/guides/community/multimodal-decisions)
 
 ### ONNX
 
