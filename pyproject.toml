@@ -7,7 +7,7 @@ name = "photo-sort-ai"
 version = "0.1.0"
 description = "Local photo rating, folder watching and RAW metadata integration"
 requires-python = ">=3.11"
-dependencies = ["Pillow>=10,<13", "numpy>=1.26,<3"]
+dependencies = ["Pillow>=10,<13", "numpy>=1.26,<3", "Flask>=3.1,<4", "waitress>=3.0.2,<4"]
 
 [project.optional-dependencies]
 # openai-clip still imports pkg_resources (removed in newer setuptools).
@@ -22,3 +22,6 @@ photo-sort-ai = "photo_sort_ai.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+photo_sort_ai = ["web_assets/*.html", "web_assets/*.css", "web_assets/*.js"]

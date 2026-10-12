@@ -66,7 +66,7 @@ class OpenAICompatibleScorer:
         variable = config.openai_api_key_env
         self.api_key = os.environ.get(variable, "").strip() if variable else ""
         if variable and not self.api_key:
-            raise RuntimeError(f"APIキーを環境変数 {variable} またはGUIの起動中のみの入力欄に設定してください。")
+            raise RuntimeError(f"APIキーを環境変数 {variable} またはWebUIの起動中のみの入力欄に設定してください。")
         if any(ord(c) < 32 or ord(c) > 126 for c in self.api_key):
             raise ValueError("APIキーに使用できない文字が含まれています。")
         route = API_ROUTES[config.openai_api_mode]

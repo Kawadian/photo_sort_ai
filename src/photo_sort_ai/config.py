@@ -241,6 +241,12 @@ class Config:
 
 def load_config(path: Path) -> Config:
     data = json.loads(path.read_text(encoding="utf-8-sig"))
+    return config_from_dict(data, path)
+
+
+def config_from_dict(data: dict, path: Path) -> Config:
+    if not isinstance(data, dict):
+        raise ValueError("設定はJSONオブジェクトにしてください。")
     allowed = {f.name for f in fields(Config)}
     unknown = set(data) - allowed
     if unknown:

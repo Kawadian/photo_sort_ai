@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 class RunLock:
-    """OS-owned lock: released on a crash, shared across scan/watch/GUI."""
+    """OS-owned lock: released on a crash, shared across scan/watch/WebUI."""
 
     def __init__(self, directory: Path):
         directory.mkdir(parents=True, exist_ok=True)
