@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 from PIL import Image
 
 from .config import Config
-from .scoring import Evaluation
+from .scoring import Evaluation, model_info
 
 RATING_SCHEMA = {
     "type": "object",
@@ -238,7 +238,7 @@ class OpenAICompatibleScorer:
         if type(rating) is not int or not 1 <= rating <= 5 or not isinstance(answer.get("reason"), str):
             raise ValueError("APIが有効なrating(整数1〜5)とreasonを返しませんでした。")
         return Evaluation((rating - 1) * 25.0, rating, answer["reason"][:2000],
-                          {"backend": "openai", "model": self.config.openai_model,
+                          {"backend": "openai", **model_info(data, self.config.openai_model),
                            "api_mode": self.config.openai_api_mode, "endpoint": self.endpoint,
                            "usage": data.get("usage"), "score_is_star_conversion": True})
 
@@ -261,7 +261,7 @@ class OpenAICompatibleScorer:
         rating = int(choice)
         return Evaluation((rating - 1) * 25.0, rating,
                           f"Decisionsの選択結果: 星{rating}（文章の評価理由は生成しません）",
-                          {"backend": "openai", "model": self.config.openai_model,
+                          {"backend": "openai", **model_info(data, self.config.openai_model),
                            "api_mode": self.config.openai_api_mode, "endpoint": self.endpoint,
                            "usage": data.get("usage"), "decision": answer,
                            "score_is_star_conversion": True})

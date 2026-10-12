@@ -20,7 +20,7 @@ from photo_sort_ai.metadata import (
     read_sidecar_rating,
     sidecar_path,
 )
-from photo_sort_ai.scoring import Evaluation
+from photo_sort_ai.scoring import Evaluation, model_info
 
 
 class CaptionTests(unittest.TestCase):
@@ -61,6 +61,16 @@ class CaptionTests(unittest.TestCase):
         self.assertIn('"probabilities"', text)
         self.assertIn("星からの換算値", text)
         self.assertNotIn("仮の理由", text)
+
+    def test_reported_model_is_recorded_alongside_requested_alias(self):
+        details = model_info({"model": "provider/model-snapshot"}, "router/auto")
+        self.assertEqual(details["model"], "provider/model-snapshot")
+        self.assertEqual(details["requested_model"], "router/auto")
+        self.assertEqual(model_info({}, "requested"), {"model": "requested"})
+        self.assertEqual(model_info({"model": None}, "requested"), {"model": "requested"})
+        text = evaluation_caption(self.cfg, Evaluation(75, 4, "理由", details).to_dict())
+        self.assertIn("使用モデル: provider/model-snapshot", text)
+        self.assertIn("router/auto", text)
 
     def test_sidecar_caption_independent_of_star_protection_and_translation_preservation(self):
         photo = self.photos / "写真.arw"
