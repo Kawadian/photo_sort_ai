@@ -139,6 +139,38 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.post("/api/config", []).status_code, 400)
         self.assertEqual(self.post("/api/jobs", {"mode": "invalid"}).status_code, 400)
 
+    def test_prompt_favorites_survive_restart_and_do_not_change_unused_analysis(self):
+        data = asdict(self.cfg)
+        data.update(openai_prompt="既存のカスタム指示を保持", openai_prompt_presets={
+            "人物": "表情と主被写体の合焦を重視して評価してください。",
+            "構図・表現": "構図と光の表現を重視し、意図したボケを失敗扱いしないでください。"})
+        original_signature = self.cfg.analysis_signature()
+        response = self.post("/api/config", {"config": data})
+        self.assertEqual(response.status_code, 200)
+        loaded = load_config(self.root / "config.json")
+        restarted = create_app(WebController(loaded, self.root / "config.json")).test_client()
+        persisted = restarted.get("/api/config").get_json()["config"]
+        self.assertEqual(persisted["openai_prompt_presets"], data["openai_prompt_presets"])
+        self.assertEqual(persisted["openai_prompt"], "既存のカスタム指示を保持")
+        self.assertEqual(loaded.analysis_signature(), original_signature)
+        self.assertTrue(restarted.get("/api/config").get_json()["default_prompt"])
+
+    def test_malformed_prompt_favorites_are_rejected_before_save(self):
+        for presets in [[], {"": "指示"}, {" 前後の空白 ": "指示"}, {"名前": " "},
+                        {"名前": 3}, {"x" * 81: "指示"}, {"名前": "x" * 50001},
+                        {str(i): "指示" for i in range(101)}]:
+            data = asdict(self.cfg)
+            data["openai_prompt_presets"] = presets
+            self.assertEqual(self.post("/api/config", {"config": data}).status_code, 400)
+            self.assertFalse((self.root / "config.json").exists())
+
+    def test_old_config_has_empty_favorites_without_changing_current_prompt(self):
+        path = self.root / "old-config.json"
+        path.write_text(json.dumps({"openai_prompt": "既存の独自プロンプト"}, ensure_ascii=False), encoding="utf-8")
+        loaded = load_config(path)
+        self.assertEqual(loaded.openai_prompt_presets, {})
+        self.assertEqual(loaded.openai_prompt, "既存の独自プロンプト")
+
     def test_real_scan_history_preview_export_and_unchanged_photo_pixels(self):
         path = self.photo()
         original = hashlib.sha256(path.read_bytes()).hexdigest()

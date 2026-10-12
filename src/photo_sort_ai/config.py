@@ -86,6 +86,7 @@ class Config:
     openai_model: str = ""
     openai_api_key_env: str = "OPENAI_API_KEY"
     openai_prompt: str = RATING_PROMPT
+    openai_prompt_presets: dict[str, str] = field(default_factory=dict)
     openai_response_format: str = "json_object"
     openai_image_detail: str = "auto"
     openai_timeout: float = 180
@@ -115,6 +116,7 @@ class Config:
         self.metrics = [Metric(**asdict(m)) for m in metrics]
 
     def validate(self, require_folders: bool = True) -> None:
+        self.validate_prompt_presets()
         if require_folders and not self.folders:
             raise ValueError("対象フォルダを指定してください。")
         if self.backend not in {"heuristic", "pyiqa", "ollama", "openai", "onnx"}:
@@ -175,6 +177,16 @@ class Config:
             for folder in self.folders:
                 if not Path(folder).is_dir():
                     raise ValueError(f"フォルダがありません: {folder}")
+
+    def validate_prompt_presets(self) -> None:
+        presets = self.openai_prompt_presets
+        if not isinstance(presets, dict) or len(presets) > 100:
+            raise ValueError("プロンプトのお気に入りは名前と本文のJSONオブジェクトで、100件まで登録できます。")
+        for name, prompt in presets.items():
+            if not isinstance(name, str) or not name.strip() or name != name.strip() or len(name) > 80:
+                raise ValueError("お気に入りの名前は前後に空白のない1〜80文字にしてください。")
+            if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 50000:
+                raise ValueError("お気に入りの本文は空でない50,000文字以内の文字列にしてください。")
 
     def validate_openai(self) -> None:
         import re

@@ -50,6 +50,7 @@ def parser() -> argparse.ArgumentParser:
         s.add_argument("--api-mode", choices=["chat_completions", "responses", "decisions", "openrouter_decisions"])
         s.add_argument("--api-key-env", help="APIキーの環境変数名。匿名APIは空文字")
         s.add_argument("--api-json-mode", choices=["json_schema", "json_object", "none"])
+        s.add_argument("--api-prompt-preset", help="設定JSONに保存したお気に入りのプロンプト名")
         s.add_argument("--api-concurrency", type=int, help="API／Ollamaの同時リクエスト数（1〜16）")
         s.add_argument("--retry-errors", action="store_true")
         s.add_argument("--overwrite-rated", action="store_true", help="既存の星評価の上書きを許可")
@@ -152,6 +153,13 @@ def main(argv=None) -> int:
                 if cfg.backend != "openai":
                     raise ValueError("--api-*を使う場合は --preset openai、またはAPI方式の設定を指定してください。")
                 setattr(cfg, key, value)
+        if args.api_prompt_preset is not None:
+            if cfg.backend != "openai":
+                raise ValueError("--api-prompt-presetを使う場合は --preset openai、またはAPI方式の設定を指定してください。")
+            cfg.validate_prompt_presets()
+            if args.api_prompt_preset not in cfg.openai_prompt_presets:
+                raise ValueError(f"プロンプトのお気に入りがありません: {args.api_prompt_preset}")
+            cfg.openai_prompt = cfg.openai_prompt_presets[args.api_prompt_preset]
         if getattr(args, "api_concurrency", None) is not None:
             if cfg.backend not in {"openai", "ollama"}:
                 raise ValueError("--api-concurrencyはAPI方式またはOllamaでのみ指定できます。")

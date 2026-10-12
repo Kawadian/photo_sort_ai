@@ -58,6 +58,34 @@ class OpenAIAPITests(unittest.TestCase):
     def image(self):
         return Image.new("RGB", (160, 100), (90, 150, 110))
 
+    def test_saved_prompt_is_used_in_every_api_mode_and_library_does_not_invalidate_cache(self):
+        for mode in ["chat_completions", "responses", "decisions", "openrouter_decisions"]:
+            reply = chat_reply()
+            if mode == "responses":
+                reply = {"status": "completed", "output_text": '{"rating":4,"reason":"テスト"}'}
+            elif mode == "decisions":
+                reply = {"answers": [{"name": "rating", "type": "choice", "choice": "4"}]}
+            elif mode == "openrouter_decisions":
+                reply = {"answers": {"rating": {"type": "choice", "choice": "4"}}}
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory, server(reply) as (base, records):
+                cfg = self.cfg(base, openai_api_mode=mode)
+                original = cfg.analysis_signature()
+                cfg.openai_prompt_presets = {"画質": "画質に注目して採点してください。", "未選択": "使用しないプロンプト"}
+                self.assertEqual(original, cfg.analysis_signature())
+                cfg.openai_prompt = cfg.openai_prompt_presets["画質"]
+                self.assertNotEqual(original, cfg.analysis_signature())
+                path = Path(directory) / "config.json"
+                save_config(cfg, path)
+                loaded = load_config(path)
+                self.assertEqual(create_scorer(loaded).evaluate(self.image()).rating, 4)
+                body = records[0]["body"]
+                text = json.dumps(body, ensure_ascii=False)
+                self.assertIn("画質に注目して採点してください。", text)
+                self.assertNotIn("使用しないプロンプト", text)
+                if mode in {"decisions", "openrouter_decisions"}:
+                    question = body["questions"][0] if mode == "decisions" else body["questions"]["rating"]
+                    self.assertIn(loaded.openai_prompt, question["instructions"])
+
     def test_openrouter_decisions_typed_output_and_no_chat_parameters(self):
         answer = {"type": "choice", "choice": "4",
                   "probabilities": {"1": 0.01, "2": 0.04, "3": 0.1, "4": 0.8, "5": 0.05},
@@ -280,6 +308,23 @@ class OpenAIAPITests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(len(records), 1)
             self.assertEqual(load_config(config_path).preset, "light")
+
+    def test_cli_selects_saved_prompt_without_rewriting_active_prompt(self):
+        with tempfile.TemporaryDirectory() as directory, server() as (base, records):
+            root = Path(directory).resolve()
+            self.image().save(root / "写真.png")
+            path = root / "config.json"
+            cfg = self.cfg(base, folders=[str(root)], state_dir=str(root / "state"), output="report",
+                           settle_seconds=0, low_priority=False, openai_prompt="元の指示",
+                           openai_prompt_presets={"人物": "人物の表情と合焦を重視してください。"})
+            save_config(cfg, path)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["--config", str(path), "scan", "--api-prompt-preset", "人物"]), 0)
+            self.assertIn(cfg.openai_prompt_presets["人物"], records[0]["body"]["messages"][0]["content"][0]["text"])
+            self.assertEqual(load_config(path).openai_prompt, "元の指示")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["--config", str(path), "scan", "--api-prompt-preset", "存在しない名前"]), 1)
+            self.assertEqual(len(records), 1)
 
 
 if __name__ == "__main__":
