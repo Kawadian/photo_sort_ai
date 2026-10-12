@@ -35,7 +35,7 @@ with tempfile.TemporaryDirectory() as directory:
                     break
                 except OSError:
                     if process.poll() is not None or time.monotonic() > deadline:
-                        raise RuntimeError(log_path.read_text())
+                        raise RuntimeError(log_path.read_text(encoding="utf-8", errors="replace"))
                     time.sleep(0.1)
             assert info["authenticated"] and not info["public"]
             for path, expected in [("/", b"Photo Sort AI"), ("/assets/app.js", b"initialize"),

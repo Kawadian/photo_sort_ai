@@ -124,7 +124,7 @@ class WebTests(unittest.TestCase):
             self.assertEqual(loaded.backend, "openai")
             self.assertEqual(loaded.api_concurrency, 4)
             self.assertEqual(loaded.onnx_size, 320)
-            self.assertNotIn("session-only-secret", (self.root / "config.json").read_text())
+            self.assertNotIn("session-only-secret", (self.root / "config.json").read_text(encoding="utf-8"))
             self.assertEqual(self.post("/api/config", {"config": data, "api_key": ""}).status_code, 200)
             self.assertEqual(os.environ["PHOTO_SORT_TEST_API_KEY"], "")
 
