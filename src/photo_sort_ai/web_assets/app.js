@@ -89,7 +89,7 @@ $('openai_prompt').addEventListener('input',updatePromptHint);
 function renderConfig() {
  buildFields('general-fields',fields);buildFields('api-fields',apiFields);buildFields('local-fields',localFields);
  $('checkbox-fields').replaceChildren();
- for(const [key,label] of [['recursive','サブフォルダも対象'],['low_priority','低優先度で実行'],['backup','書き込み前にバックアップ']]) {
+ for(const [key,label] of [['recursive','サブフォルダも対象'],['low_priority','低優先度で実行'],['backup','書き込み前にバックアップ'],['exiftool_ignore_minor_errors','ExifToolの軽微なエラーを無視（-m）']]) {
   const wrapper=document.createElement('label');wrapper.className='check';const input=document.createElement('input');input.type='checkbox';input.id=key;input.checked=config[key];input.onchange=markDirty;wrapper.append(input,document.createTextNode(label));$('checkbox-fields').append(wrapper);
  }
  $('folders').value=config.folders.join('\n');$('openai_prompt').value=config.openai_prompt;$('openai_extra_body').value=JSON.stringify(config.openai_extra_body,null,2);$('advanced').value=JSON.stringify(config,null,2);
@@ -104,7 +104,7 @@ function collectConfig() {
  const value=structuredClone(config);
  for(const [key,,type] of [...fields,...apiFields,...localFields]) {let v=$(key).value;if(type==='number')v=Number(v);if(type==='array')v=v.split(',').map(Number);if(key==='openai_store')v=v==='omit'?null:v==='true';value[key]=v;}
  value.folders=$('folders').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
- for(const key of ['recursive','low_priority','backup'])value[key]=$(key).checked;
+ for(const key of ['recursive','low_priority','backup','exiftool_ignore_minor_errors'])value[key]=$(key).checked;
  value.openai_prompt=$('openai_prompt').value;value.openai_extra_body=JSON.parse($('openai_extra_body').value);
  return value;
 }

@@ -3,6 +3,7 @@ import csv
 import json
 import os
 import shutil
+import sys
 import tempfile
 import threading
 import unittest
@@ -201,6 +202,47 @@ class MetadataTests(TempCase):
     def test_raw_and_jpeg_sidecars_do_not_collide(self):
         self.assertNotEqual(sidecar_path(Path("a.dng")), sidecar_path(Path("a.jpg")))
         self.assertEqual(sidecar_path(Path("a.arw")), Path("a.xmp"))
+
+    @unittest.skipIf(os.name == "nt", "uses a POSIX shell wrapper as a fake ExifTool")
+    def test_exiftool_minor_errors_flag_is_opt_in(self):
+        log = self.root / "args.json"
+        fake = self.root / "fake_exiftool.py"
+        fake.write_text(
+            "import json, sys\n"
+            f"log = {str(log)!r}\n"
+            "args = sys.argv[1:]\n"
+            "if '-overwrite_original' in args:\n"
+            "    open(log, 'w').write(json.dumps(args))\n"
+            "    if '-m' not in args:\n"
+            "        sys.stderr.write('Error: [minor] Error copying hidden data')\n"
+            "        sys.exit(1)\n"
+            "else:\n"
+            "    print(json.dumps([{'Rating': 4}]))\n", encoding="utf-8")
+        fake.chmod(0o755)
+        wrapper = self.root / "exiftool"
+        wrapper.write_text(f"#!/bin/sh\nexec {sys.executable!s} {str(fake)!s} \"$@\"\n", encoding="utf-8")
+        wrapper.chmod(0o755)
+        path = self.photos / "a.dng"
+        path.write_bytes(b"x")
+        self.cfg.output, self.cfg.existing_policy = "embedded", "overwrite"
+        self.cfg.exiftool_path = str(wrapper)
+        self.assertFalse(Config().exiftool_ignore_minor_errors)
+        with self.assertRaisesRegex(RuntimeError, "hidden data"):
+            MetadataWriter(self.cfg).apply(path, 4)
+        self.assertNotIn("-m", json.loads(log.read_text()))
+        self.cfg.exiftool_ignore_minor_errors = True
+        self.assertEqual(MetadataWriter(self.cfg).apply(path, 4), "written")
+        self.assertEqual(json.loads(log.read_text())[0], "-m")
+
+    def test_exiftool_minor_errors_flag_must_be_bool(self):
+        self.cfg.exiftool_ignore_minor_errors = "yes"
+        with self.assertRaises(ValueError):
+            self.cfg.validate()
+
+    def test_exiftool_minor_errors_does_not_change_output_signature(self):
+        before = self.cfg.output_signature()
+        self.cfg.exiftool_ignore_minor_errors = True
+        self.assertEqual(before, self.cfg.output_signature())
 
     def test_report_does_not_require_exiftool(self):
         path = self.photo("photo.jpg")

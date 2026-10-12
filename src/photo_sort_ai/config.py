@@ -77,6 +77,9 @@ class Config:
     thresholds: list[float] = field(default_factory=lambda: [25, 45, 65, 85])
     state_dir: str = field(default_factory=lambda: str(default_state_dir()))
     exiftool_path: str = "exiftool"
+    # Pass ExifTool -m when writing ratings. Some camera DNGs (e.g. Sony-derived) are
+    # refused with "[minor] Error copying hidden data" otherwise. Off keeps strict behavior.
+    exiftool_ignore_minor_errors: bool = False
     ollama_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3-vl:4b"
     ollama_prompt: str = RATING_PROMPT
@@ -156,6 +159,8 @@ class Config:
                     raise ValueError("モデル設定には有限の値が必要です。")
                 if m.minimum >= m.maximum or m.weight <= 0:
                     raise ValueError("モデルのminimum < maximum、weight > 0が必要です。")
+        if type(self.exiftool_ignore_minor_errors) is not bool:
+            raise ValueError("exiftool_ignore_minor_errorsはtrue/falseにしてください。")
         if type(self.api_concurrency) is not int or not 1 <= self.api_concurrency <= 16:
             raise ValueError("api_concurrencyは1〜16の整数にしてください。")
         if type(self.api_rate_limit_retries) is not int or not 0 <= self.api_rate_limit_retries <= 10:

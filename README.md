@@ -214,6 +214,7 @@ rawpy非対応の圧縮RAW等は、ExifToolのプレビューや同名JPEG方式
 - 既存XMPの他の項目・現像設定は保持します。壊れたXMPは上書きせずエラーとします。
 - バックアップ有効時は更新前ファイル全体を`state_dir/backups`へ保存。対応する`.json`に元の絶対パスが入ります。DNGが多いと容量が増えるため設定で無効化できます。
 - RAW画素の再現像・再圧縮はしませんが、DNGコンテナ全体の書き直しとディスクI/Oが発生する場合があります。
+- 一部のカメラ由来DNG（例: SonyのARWをAdobe DNG Converter／Lightroomで変換したもの）は、ExifToolが`Error: [minor] Error copying hidden data`で書き込みを拒否します。`exiftool_ignore_minor_errors: true`（WebUIの「ExifToolの軽微なエラーを無視（-m）」、CLIの`--exiftool-ignore-minor`）で`-m`を付けて書き込めます。既定は`false`です。`-m`使用時もRAW画素・プレビュー・既存XMP／現像設定は保持され、書き込み後の星も検証しますが、ExifToolが複製できないメーカー独自の非公開データ（Sonyのhidden data）は新しいファイルへ引き継がれません。
 - Lightroom Classicに読み込み済みの写真は「メタデータをファイルから読み込む」で反映。編集済みなら現在の現像設定を先に保存し、他アプリと同じ写真へ同時に書き込まない運用にしてください。クラウド版Lightroomや他ソフトとの同期は自動化していません。
 
 ## 監視・履歴
