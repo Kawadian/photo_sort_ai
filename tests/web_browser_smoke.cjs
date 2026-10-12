@@ -35,14 +35,34 @@ const net = require('node:net');
   await page.locator('[data-tab=settings]').click();await page.locator('#cpu_threads').fill('3');await page.locator('#settings-form button[type=submit]').click();await page.locator('#notice').filter({hasText:'設定を保存しました'}).waitFor();
   await page.locator('[data-tab=api]').click();await page.locator('#openai_api_mode').selectOption('openrouter_decisions');await page.locator('#api_concurrency').fill('4');await page.locator('#api-form button[type=submit]').click();
   await page.waitForFunction(()=>document.querySelector('#dirty-label').textContent==='保存済み');
+  const quality='主被写体の合焦とノイズを重視してください。';const composition='構図と光の表現を重視してください。';const updated='人物の表情を重視し、意図した背景ボケは失敗扱いしないでください。';
+  await page.locator('#openai_prompt').fill(quality);await page.locator('#prompt-name').fill('画質重視');await page.locator('#prompt-add').click();
+  await page.locator('#prompt-add').click();await page.locator('#notice').filter({hasText:'同じ名前のお気に入り'}).waitFor();
+  await page.locator('#openai_prompt').fill(composition);await page.locator('#prompt-name').fill('構図');await page.locator('#prompt-add').click();
+  await page.locator('#prompt-preset').selectOption('saved:画質重視');assert.equal(await page.locator('#openai_prompt').inputValue(),quality);
+  await page.locator('#openai_prompt').fill(updated);await page.locator('#prompt-update').click();await page.locator('#prompt-name').fill('人物');await page.locator('#prompt-rename').click();
+  await page.locator('#prompt-preset').selectOption('saved:構図');await page.locator('#prompt-delete').click();
+  await page.locator('#prompt-preset').selectOption('default');assert.notEqual(await page.locator('#openai_prompt').inputValue(),updated);
+  await page.locator('#prompt-preset').selectOption('saved:人物');assert.equal(await page.locator('#openai_prompt').inputValue(),updated);
+  // Names must behave as data, including JavaScript object property names.
+  await page.locator('#prompt-name').fill('__proto__');await page.locator('#prompt-add').click();
+  await page.locator('#api-form button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('#dirty-label').textContent==='保存済み');
+  const favorites=JSON.parse(fs.readFileSync(path.join(root,'config.json'),'utf8'));assert.equal(favorites.openai_prompt_presets['__proto__'],updated);assert.equal(favorites.openai_prompt,updated);
+  await page.reload();await page.locator('#workspace').waitFor({state:'visible'});await page.locator('[data-tab=api]').click();
+  await page.waitForFunction(expected=>document.querySelector('#openai_prompt').value===expected,updated);
+  await page.locator('#prompt-preset').selectOption('saved:__proto__');await page.locator('#prompt-delete').click();await page.locator('#api-form button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('#dirty-label').textContent==='保存済み');
+  await page.screenshot({path:path.join(output,'prompt-favorites-desktop.png'),fullPage:true});
   const saved=JSON.parse(fs.readFileSync(path.join(root,'config.json'),'utf8'));assert.equal(saved.cpu_threads,3);assert.equal(saved.api_concurrency,4);assert.equal(saved.openai_api_mode,'openrouter_decisions');
+  assert.deepEqual(saved.openai_prompt_presets,{'人物':updated});
   await page.locator('[data-tab=overview]').click();await page.locator('[data-mode=scan]').click();await page.waitForFunction(()=>document.querySelector('#metric-results').textContent==='1');
   await page.locator('[data-tab=results]').click();await page.locator('#result-rows tr').first().click();await page.waitForFunction(()=>document.querySelector('#detail-image').complete&&document.querySelector('#detail-image').naturalWidth>0);await page.locator('#close-detail').click();
   await page.locator('#search').fill('no-match');assert.equal(await page.locator('#result-rows tr').count(),0);await page.locator('#search').fill('sample');assert.equal(await page.locator('#result-rows tr').count(),1);
   await page.screenshot({path:path.join(output,'results.png'),fullPage:true});
   await page.setViewportSize({width:390,height:844});await page.locator('[data-tab=overview]').click();await page.screenshot({path:path.join(output,'mobile.png'),fullPage:true});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'mobile page overflows');
-  assert.deepEqual(errors,[]);console.log('Browser login, config save, Decisions selection, scan, preview, search and mobile layout: OK');
+  await page.locator('[data-tab=api]').click();await page.screenshot({path:path.join(output,'prompt-favorites-mobile.png'),fullPage:true});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'mobile API page overflows');
+  assert.deepEqual(errors,[]);console.log('Browser login, prompt favorites CRUD/reload/default, config save, Decisions selection, scan, preview, search and mobile layout: OK');
  } finally {
   if(browser)await browser.close();child.kill();await Promise.race([new Promise(resolve=>child.once('exit',resolve)),new Promise(resolve=>setTimeout(resolve,5000))]);fs.rmSync(root,{recursive:true,force:true});
  }

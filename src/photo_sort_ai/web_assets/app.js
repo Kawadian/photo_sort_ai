@@ -1,6 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let csrf = '', config = {}, results = [], events = [], lastEvent = 0, running = false, dirty = false, polling = false;
+let defaultPrompt = '';
 const presetLabels = {light:'軽量解析（AIなし）',quality:'MUSIQ：画質',aesthetic:'NIMA：見栄え',balanced:'MUSIQ＋NIMA',topiq:'TOPIQ：画質',clip:'CLIPIQA',laion:'LAION',technical:'BRISQUE＋NIQE',ollama:'Ollama',openai:'OpenAI互換API',onnx:'ONNX',custom:'カスタム'};
 const statuses = {written:'星を保存',sidecar:'XMPへ保存',report:'結果のみ',protected:'既存の星を保護'};
 const fields = [
@@ -40,6 +41,51 @@ function buildFields(target, definitions) {
  }
 }
 function markDirty() { dirty=true;$('dirty-label').textContent='未保存の変更があります'; }
+function selectedPromptName() { const value=$('prompt-preset').value;return value.startsWith('saved:')?value.slice(6):null; }
+function updatePromptHint() {
+ const name=selectedPromptName();
+ for(const id of ['prompt-update','prompt-rename','prompt-delete'])$(id).disabled=name===null;
+ const edited=name!==null&&$('openai_prompt').value!==config.openai_prompt_presets[name];
+ $('prompt-hint').textContent=edited?'本文が選択したお気に入りと異なります。「更新」でお気に入りへ反映できます。設定の保存で確定します。':'お気に入りの変更と評価への適用は、画面下の「設定を保存」で確定します。';
+}
+function renderPromptPresets(preferred=null) {
+ const select=$('prompt-preset');select.replaceChildren();
+ for(const [value,text] of [['custom','カスタム（直接編集）'],['default','標準プロンプト'],...Object.keys(config.openai_prompt_presets).map(name=>['saved:'+name,name])]) {
+  const option=document.createElement('option');option.value=value;option.textContent=text;select.append(option);
+ }
+ const match=Object.entries(config.openai_prompt_presets).find(([,prompt])=>prompt===$('openai_prompt').value);
+ select.value=preferred!==null&&Object.hasOwn(config.openai_prompt_presets,preferred)?'saved:'+preferred:match?'saved:'+match[0]:$('openai_prompt').value===defaultPrompt?'default':'custom';
+ $('prompt-name').value=selectedPromptName()||'';updatePromptHint();
+}
+$('prompt-preset').onchange=()=>{
+ const name=selectedPromptName();const old=$('openai_prompt').value;
+ if(name!==null)$('openai_prompt').value=config.openai_prompt_presets[name];
+ else if($('prompt-preset').value==='default')$('openai_prompt').value=defaultPrompt;
+ $('prompt-name').value=name||'';updatePromptHint();if(old!==$('openai_prompt').value)markDirty();
+};
+function editPromptPreset(action) {
+ try {
+  const old=selectedPromptName(),name=$('prompt-name').value.trim(),prompt=$('openai_prompt').value;
+  const library=Object.assign(Object.create(null),config.openai_prompt_presets);
+  if(action==='add'||action==='rename') {
+   if(!name||name.length>80)throw new Error('お気に入りの名前を1〜80文字で入力してください。');
+   if(Object.hasOwn(library,name))throw new Error('同じ名前のお気に入りがあります。別の名前を入力するか、選択して更新してください。');
+  }
+  if(action!=='add'&&(old===null||!Object.hasOwn(library,old)))throw new Error('お気に入りを選択してください。');
+  if(action==='add'||action==='update') {
+   if(!prompt.trim()||prompt.length>50000)throw new Error('プロンプト本文を1〜50,000文字で入力してください。');
+   if(action==='add'&&Object.keys(library).length>=100)throw new Error('お気に入りは100件まで登録できます。');
+   library[action==='add'?name:old]=prompt;
+  } else if(action==='rename'){library[name]=library[old];delete library[old];}
+  else if(action==='delete')delete library[old];
+  config.openai_prompt_presets=library;renderPromptPresets(action==='add'||action==='rename'?name:action==='update'?old:null);markDirty();
+  // Preserve any other advanced JSON edits while reflecting library changes.
+  try {const advanced=JSON.parse($('advanced').value);advanced.openai_prompt_presets=library;$('advanced').value=JSON.stringify(advanced,null,2);}catch{}
+  notify('お気に入りを変更しました。「設定を保存」で確定してください。');
+ }catch(error){notify(error.message,true);}
+}
+for(const action of ['add','update','rename','delete'])$('prompt-'+action).onclick=()=>editPromptPreset(action);
+$('openai_prompt').addEventListener('input',updatePromptHint);
 function renderConfig() {
  buildFields('general-fields',fields);buildFields('api-fields',apiFields);buildFields('local-fields',localFields);
  $('checkbox-fields').replaceChildren();
@@ -47,6 +93,7 @@ function renderConfig() {
   const wrapper=document.createElement('label');wrapper.className='check';const input=document.createElement('input');input.type='checkbox';input.id=key;input.checked=config[key];input.onchange=markDirty;wrapper.append(input,document.createTextNode(label));$('checkbox-fields').append(wrapper);
  }
  $('folders').value=config.folders.join('\n');$('openai_prompt').value=config.openai_prompt;$('openai_extra_body').value=JSON.stringify(config.openai_extra_body,null,2);$('advanced').value=JSON.stringify(config,null,2);
+ renderPromptPresets();
  $('metric-preset').textContent=presetLabels[config.preset]||config.preset;$('metric-folders').textContent=config.folders.length;
  $('folder-summary').replaceChildren();for(const folder of config.folders){const li=document.createElement('li');li.textContent=folder;$('folder-summary').append(li);}
  if(!config.folders.length){const li=document.createElement('li');li.textContent='フォルダがまだ設定されていません';$('folder-summary').append(li);}
@@ -106,7 +153,7 @@ async function refresh() {
 async function initialize() {
  try {const info=await api('session');csrf=info.csrf;if(!info.authenticated){showLogin();return;}
   $('login').hidden=true;$('workspace').hidden=false;$('logout').hidden=!info.auth_required;$('access-badge').textContent=info.public?'外部公開・認証あり':'ローカル';
-  const data=await api('config');config=data.config;renderConfig();await refresh();
+  const data=await api('config');config=data.config;defaultPrompt=data.default_prompt;renderConfig();await refresh();
  }catch(error){showLogin();$('login-error').textContent=error.message;}
 }
 $('login-form').onsubmit=async event=>{event.preventDefault();try{const data=await api('login',{password:$('password').value});csrf=data.csrf;$('password').value='';$('login-error').textContent='';await initialize();}catch(error){$('login-error').textContent=error.message;}};

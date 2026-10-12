@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 from flask import Flask, abort, jsonify, request, send_file, session
 from werkzeug.exceptions import HTTPException
 
-from .config import PRESETS, Config, config_from_dict, save_config
+from .config import PRESETS, RATING_PROMPT, Config, config_from_dict, save_config
 from .engine import Engine
 from .images import ImagePreparer
 from .scoring import create_scorer
@@ -298,7 +298,8 @@ def create_app(controller: WebController, *, password="", public_url=None, publi
     @app.get("/api/config")
     def config_get():
         with controller.lock:
-            return jsonify(config=asdict(controller.config), presets=list(PRESETS) + ["custom"])
+            return jsonify(config=asdict(controller.config), presets=list(PRESETS) + ["custom"],
+                           default_prompt=RATING_PROMPT)
 
     @app.post("/api/config")
     def config_set():
