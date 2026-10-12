@@ -10,6 +10,7 @@ import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
+from .captions import evaluation_caption
 from .config import Config
 from .images import ImagePreparer, perceptual_hash
 from .metadata import MetadataWriter, sidecar_path
@@ -148,7 +149,8 @@ class Engine:
         if self.stamp(path) != before:
             self.emit("deferred", path=str(path), reason="評価中にファイルが変更されました。")
             return False
-        status = self.writer.apply(path, result["rating"])
+        caption = evaluation_caption(self.config, result) if self.config.caption_policy != "off" else None
+        status = self.writer.apply(path, result["rating"], caption)
         result["seconds"] = round(time.perf_counter() - start, 4)
         self.store.save(path, self.stamp(path), self.signature, self.output_signature, result, status)
         self.observed.pop(path, None)

@@ -73,6 +73,7 @@ class Config:
     max_retries: int = 3
     output: str = "embedded"
     existing_policy: str = "preserve"
+    caption_policy: str = "preserve"
     backup: bool = True
     thresholds: list[float] = field(default_factory=lambda: [25, 45, 65, 85])
     state_dir: str = field(default_factory=lambda: str(default_state_dir()))
@@ -128,6 +129,7 @@ class Config:
             (self.device, {"cpu", "cuda", "auto"}, "device"),
             (self.output, {"embedded", "sidecar", "report"}, "output"),
             (self.existing_policy, {"preserve", "overwrite"}, "existing_policy"),
+            (self.caption_policy, {"preserve", "overwrite", "off"}, "caption_policy"),
             (self.image_source, {"auto", "preview", "raw", "companion"}, "image_source"),
             (self.onnx_layout, {"NCHW", "NHWC"}, "onnx_layout"),
         ]:
@@ -253,7 +255,10 @@ class Config:
         return hashlib.sha256(json.dumps(selected, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
     def output_signature(self) -> str:
-        return json.dumps([self.output, self.existing_policy, self.backup, self.exiftool_path])
+        values = [self.output, self.existing_policy, self.backup, self.exiftool_path]
+        if self.caption_policy != "off":
+            values += ["caption-v1", self.caption_policy]
+        return json.dumps(values)
 
 
 def load_config(path: Path) -> Config:

@@ -3,13 +3,14 @@ const $ = id => document.getElementById(id);
 let csrf = '', config = {}, results = [], events = [], lastEvent = 0, running = false, dirty = false, polling = false;
 let defaultPrompt = '';
 const presetLabels = {light:'軽量解析（AIなし）',quality:'MUSIQ：画質',aesthetic:'NIMA：見栄え',balanced:'MUSIQ＋NIMA',topiq:'TOPIQ：画質',clip:'CLIPIQA',laion:'LAION',technical:'BRISQUE＋NIQE',ollama:'Ollama',openai:'OpenAI互換API',onnx:'ONNX',custom:'カスタム'};
-const statuses = {written:'星を保存',sidecar:'XMPへ保存',report:'結果のみ',protected:'既存の星を保護'};
+const statuses = {written:'星を保存',sidecar:'XMPへ保存',report:'結果のみ',protected:'既存の星を保護',caption:'説明を保存（星は保護）'};
 const fields = [
  ['preset','評価方法',Object.keys(presetLabels)],['device','実行デバイス',['cpu','cuda','auto']],
  ['output','保存方法',['embedded','sidecar','report']],['image_source','画像の取得方法',['auto','preview','raw','companion']],
  ['max_side','画像の最大辺','number'],['cpu_threads','CPUスレッド数','number'],['poll_seconds','監視間隔（秒）','number'],['settle_seconds','コピー安定待ち（秒）','number'],
  ['delay_seconds','写真ごとの休止（秒）','number'],['thresholds','星の境界（0〜100、カンマ区切り）','array'],['exiftool_path','ExifToolの場所'],['state_dir','履歴・バックアップの保存先'],
- ['existing_policy','既存の星',['preserve','overwrite']]
+ ['existing_policy','既存の星',['preserve','overwrite']],
+ ['caption_policy','キャプションの保存',['preserve','overwrite','off']]
 ];
 const apiFields = [
  ['openai_base_url','API URL'],['openai_model','画像対応モデル名'],['openai_api_mode','API方式',['chat_completions','responses','decisions','openrouter_decisions']],
@@ -34,7 +35,7 @@ function buildFields(target, definitions) {
  for (const [key,label,type] of definitions) {
   const wrapper=document.createElement('label'); wrapper.textContent=label;
   const input=document.createElement(Array.isArray(type)?'select':'input'); input.id=key;
-  if(Array.isArray(type)) for(const option of type) { const o=document.createElement('option');o.value=option;o.textContent=key==='preset'?presetLabels[option]:option;input.append(o); }
+  if(Array.isArray(type)) for(const option of type) { const o=document.createElement('option');o.value=option;o.textContent=key==='preset'?presetLabels[option]:key==='caption_policy'?{preserve:'保存する（既存の説明を保護）',overwrite:'保存する（説明を上書き）',off:'説明を保存しない'}[option]:option;input.append(o); }
   else { input.type=type==='number'?'number':'text'; if(type==='number')input.step='any'; }
   input.value=key==='openai_store'?(config[key]===null?'omit':String(config[key])):type==='array'?config[key].join(','):config[key];
   input.oninput=markDirty;wrapper.append(input);$(target).append(wrapper);

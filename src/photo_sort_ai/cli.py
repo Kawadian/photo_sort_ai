@@ -45,6 +45,7 @@ def parser() -> argparse.ArgumentParser:
         s.add_argument("--preset", choices=PRESETS)
         s.add_argument("--device", choices=["cpu", "cuda", "auto"])
         s.add_argument("--output", choices=["embedded", "sidecar", "report"])
+        s.add_argument("--caption-policy", choices=["preserve", "overwrite", "off"], help="説明欄の保存・既存説明の保護・無効化")
         s.add_argument("--api-url", help="OpenAI互換APIのベースURLまたは完全URL")
         s.add_argument("--api-model", help="OpenAI互換APIの画像対応モデルID")
         s.add_argument("--api-mode", choices=["chat_completions", "responses", "decisions", "openrouter_decisions"])
@@ -146,6 +147,8 @@ def main(argv=None) -> int:
             cfg.device = args.device
         if args.output:
             cfg.output = args.output
+        if args.caption_policy:
+            cfg.caption_policy = args.caption_policy
         api_overrides = {"api_url": "openai_base_url", "api_model": "openai_model",
                          "api_mode": "openai_api_mode", "api_key_env": "openai_api_key_env",
                          "api_json_mode": "openai_response_format"}

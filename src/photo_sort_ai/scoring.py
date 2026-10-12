@@ -24,6 +24,12 @@ class Evaluation:
         return asdict(self)
 
 
+def model_info(data: dict, requested: str) -> dict:
+    reported = data.get("model")
+    model = reported if isinstance(reported, str) and reported.strip() else requested
+    return {"model": model, **({"requested_model": requested} if model != requested else {})}
+
+
 def normalized(value: float, low: float, high: float, lower_better: bool = False) -> float:
     if not math.isfinite(value):
         raise ValueError("モデルがNaNまたは無限大を返しました。")
@@ -141,7 +147,7 @@ class OllamaScorer:
         if type(rating) is not int or not 1 <= rating <= 5 or not isinstance(answer.get("reason"), str):
             raise ValueError("Ollamaが有効なrating(1〜5)とreasonを返しませんでした。")
         return Evaluation((rating - 1) * 25.0, rating, answer["reason"][:2000],
-                          {"backend": "ollama", "model": self.config.ollama_model,
+                          {"backend": "ollama", **model_info(data, self.config.ollama_model),
                            "device_request": self.config.device, "score_is_star_conversion": True})
 
 
