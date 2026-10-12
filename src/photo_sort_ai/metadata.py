@@ -53,8 +53,9 @@ def parse_xmp(path: Path) -> ET.Element:
 
 
 class ExifTool:
-    def __init__(self, executable: str):
+    def __init__(self, executable: str, ignore_minor_errors: bool = False):
         self.executable = executable
+        self.ignore_minor_errors = ignore_minor_errors
 
     def run(self, *args: str) -> bytes:
         flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
@@ -83,7 +84,10 @@ class ExifTool:
         return self.run("-b", f"-{tag}", "-charset", "filename=UTF8", str(path.resolve()))
 
     def set_rating(self, path: Path, rating: int) -> None:
-        self.run("-overwrite_original", "-P", "-charset", "filename=UTF8",
+        # -m only downgrades ExifTool "[minor]" errors to warnings; the written
+        # rating is still verified below.
+        minor = ("-m",) if self.ignore_minor_errors else ()
+        self.run(*minor, "-overwrite_original", "-P", "-charset", "filename=UTF8",
                  f"-XMP-xmp:Rating={rating}", str(path.resolve()))
         if self.metadata(path).get("Rating") != rating:
             raise RuntimeError("ExifTool書き込み後の星評価を確認できませんでした。")
@@ -92,7 +96,7 @@ class ExifTool:
 class MetadataWriter:
     def __init__(self, config: Config):
         self.config = config
-        self.exiftool = ExifTool(config.exiftool_path)
+        self.exiftool = ExifTool(config.exiftool_path, config.exiftool_ignore_minor_errors)
 
     def effective_mode(self, path: Path) -> str:
         if self.config.output == "embedded" and path.suffix.lower() not in EMBEDDABLE:

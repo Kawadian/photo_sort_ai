@@ -54,6 +54,8 @@ def parser() -> argparse.ArgumentParser:
         s.add_argument("--api-concurrency", type=int, help="API／Ollamaの同時リクエスト数（1〜16）")
         s.add_argument("--retry-errors", action="store_true")
         s.add_argument("--overwrite-rated", action="store_true", help="既存の星評価の上書きを許可")
+        s.add_argument("--exiftool-ignore-minor", action="store_true",
+                       help="星の書き込み時にExifToolへ-mを渡し、軽微なエラー（例: Sony DNGのhidden data）を警告扱いにする")
         if command != "watch":
             s.add_argument("--limit", type=int, default=20 if command == "benchmark" else None)
         if command == "scan":
@@ -166,6 +168,8 @@ def main(argv=None) -> int:
             cfg.api_concurrency = args.api_concurrency
         if args.overwrite_rated:
             cfg.existing_policy = "overwrite"
+        if args.exiftool_ignore_minor:
+            cfg.exiftool_ignore_minor_errors = True
         limit = getattr(args, "limit", None)
         if limit is not None and limit < 1:
             raise ValueError("--limitは1以上にしてください。")
