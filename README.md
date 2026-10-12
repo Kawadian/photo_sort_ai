@@ -204,7 +204,7 @@ rawpy非対応の圧縮RAW等は、ExifToolのプレビューや同名JPEG方式
 
 | `output` | 動作 |
 |---|---|
-| `embedded` | DNG/JPEG/TIFFの`XMP-xmp:Rating`だけをExifToolで更新。他の形式はサイドカーへ |
+| `embedded` | DNG/JPEG/TIFFの星と説明欄をExifToolで更新。他の形式はサイドカーへ |
 | `sidecar` | XMPファイルへ保存。RAW画素は変更しない |
 | `report` | 写真・XMPを変更せず、結果だけDBへ保存 |
 
@@ -216,6 +216,37 @@ rawpy非対応の圧縮RAW等は、ExifToolのプレビューや同名JPEG方式
 - RAW画素の再現像・再圧縮はしませんが、DNGコンテナ全体の書き直しとディスクI/Oが発生する場合があります。
 - 一部のカメラ由来DNG（例: SonyのARWをAdobe DNG Converter／Lightroomで変換したもの）は、ExifToolが`Error: [minor] Error copying hidden data`で書き込みを拒否します。`exiftool_ignore_minor_errors: true`（WebUIの「ExifToolの軽微なエラーを無視（-m）」、CLIの`--exiftool-ignore-minor`）で`-m`を付けて書き込めます。既定は`false`です。`-m`使用時もRAW画素・プレビュー・既存XMP／現像設定は保持され、書き込み後の星も検証しますが、ExifToolが複製できないメーカー独自の非公開データ（Sonyのhidden data）は新しいファイルへ引き継がれません。
 - Lightroom Classicに読み込み済みの写真は「メタデータをファイルから読み込む」で反映。編集済みなら現在の現像設定を先に保存し、他アプリと同じ写真へ同時に書き込まない運用にしてください。クラウド版Lightroomや他ソフトとの同期は自動化していません。
+
+### 説明欄・キャプション
+
+既定では、すべての評価方式の結果をLightroomのキャプション用`XMP-dc:Description`（`dc:description`の`x-default`）へ記録します。
+使用モデル、評価方式、算出した星と100点換算スコア、文章のコメント・評価理由、取得できる評価詳細を含めます。
+Decisionsは文章のコメントを生成せず、返された選択結果・確率分布・confidenceを掲載します。
+ローカル専用AIは各モデルの生スコア・正規化値・重み・デバイス等、ONNXはモデルファイル名・生スコア・実行プロバイダー等を掲載します。
+軽量統計にはAIモデルを使っていないことを明記します。API接続先URLやトークン使用量は説明欄へ含めません。
+
+WebUIの「評価設定」→「キャプションの保存」、または`caption_policy`で次を選べます。
+
+| 設定 | 動作 |
+|---|---|
+| `preserve`（既定） | 説明欄が空なら保存。既存のキャプションや言語別説明・IPTCの説明文は保護 |
+| `overwrite` | 標準言語の説明を今回の評価結果へ置き換え。他言語の説明は保持 |
+| `off` | 星だけ保存し、説明欄は変更しない |
+
+星の保護と説明欄の保護は独立しています。既存の星を保護したまま、空の説明欄へ評価内容を追加できます。
+説明欄の保存先は星と共通（DNG/JPEG/TIFF内部、またはXMPサイドカー）。`report`ではどちらも変更しません。
+保存方法や説明欄設定だけを変更した場合は、条件が一致する過去の評価を再利用でき、APIへの再送信は不要です。
+過去のAIキャプションも既定では保護されます。新しいモデルや指示で説明を更新する場合は`overwrite`を選んでください。
+既存のバックアップ設定が適用され、書き込み後に星とキャプションを検査します。日本語・絵文字・改行に対応します。
+
+CLIの例（`scan`／`watch`／`benchmark`で指定可能。計測では写真を変更しません）：
+
+```bash
+.venv/bin/python -m photo_sort_ai scan --caption-policy overwrite
+```
+
+Lightroom Classicのキャプションへの対応と読み込み操作は[Adobe Communityの説明](https://community.adobe.com/questions-675/comment-field-991491)も参照してください。
+Lightroomのカタログを直接更新する機能はありません。DNGの説明をLightroomで通常のメタデータとして扱う場合は`embedded`を使ってください。
 
 ## 監視・履歴
 
